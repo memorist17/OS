@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+"""Phase 4: Launch visualization dashboard."""
+
+import argparse
+from pathlib import Path
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.visualization.dashboard import create_dashboard
+
+
+def main():
+    """Launch the Urban Structure Analysis dashboard."""
+    parser = argparse.ArgumentParser(description="Launch Urban Structure Analysis Dashboard")
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("outputs"),
+        help="Path to results directory (or parent containing run directories)",
+    )
+    parser.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        help="Specific run ID to display (uses latest if not specified)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8050,
+        help="Port to run dashboard on",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind to (use 0.0.0.0 for external access)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Run in debug mode (auto-reload on code changes)",
+    )
+
+    args = parser.parse_args()
+
+    # Determine results directory
+    results_dir = args.results_dir
+
+    if args.run_id:
+        # Use specific run
+        target_dir = results_dir / args.run_id
+        if not target_dir.exists():
+            print(f"Error: Run directory not found: {target_dir}")
+            return 1
+    elif results_dir.is_dir():
+        # Find latest run directory
+        subdirs = [d for d in results_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        if subdirs:
+            target_dir = max(subdirs, key=lambda x: x.stat().st_mtime)
+        else:
+            target_dir = results_dir
+    else:
+        target_dir = results_dir
+
+    print("=" * 60)
+    print("Urban Structure Analysis Dashboard")
+    print("=" * 60)
+    print(f"Results directory: {target_dir}")
+    print(f"Server: http://{args.host}:{args.port}")
+    print("=" * 60)
+
+    # List available files
+    if target_dir.exists():
+        print("Available files:")
+        for f in sorted(target_dir.iterdir()):
+            if f.is_file():
+                size_kb = f.stat().st_size / 1024
+                print(f"  - {f.name} ({size_kb:.1f} KB)")
+        print()
+
+    # Create and run dashboard
+    app = create_dashboard(target_dir)
+
+    print(f"Starting dashboard at http://{args.host}:{args.port}")
+    print("Press Ctrl+C to stop")
+    print()
+
+    app.run_server(
+        host=args.host,
+        port=args.port,
+        debug=args.debug,
+    )
+
+
+if __name__ == "__main__":
+    main()

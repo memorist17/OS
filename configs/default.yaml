@@ -1,0 +1,46 @@
+# Urban Structure Analysis System - 統合設定ファイル
+# ============================================================
+
+# ===== Phase 1: Acquisition & Space =====
+canvas:
+  half_size_m: 1000        # 中心から±1000m = 2km四方
+  resolution_m: 1.0        # 1px = 1m
+
+road_width_fallback:
+  motorway: 20
+  trunk: 15
+  primary: 12
+  secondary: 10
+  tertiary: 8
+  residential: 6
+  service: 4
+  default: 5
+
+# ===== Phase 3: Analysis Engine =====
+analysis:
+  # 共通スケールレンジ（全指標で統一）
+  r_min: 2
+  r_max: 512
+  r_steps: 20              # log2スケールで生成
+
+  mfa:
+    q_min: -10
+    q_max: 10
+    q_steps: 41
+    grid_shift_count: 16   # グリッドシフト平均化
+
+  lacunarity:
+    method: "integral_image"  # or "gliding_box"
+    full_scan: true           # 全画素探索
+
+  percolation:
+    d_min: 1
+    d_max: 100
+    d_steps: 50
+
+# ===== Execution =====
+execution:
+  n_jobs: -1               # joblib並列数 (-1 = 全コア)
+  cache_integral: true     # 積分画像をキャッシュ
+  verbose: true
+
