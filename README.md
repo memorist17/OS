@@ -12,7 +12,7 @@ Overture Mapsから構造データを取得し、多重フラクタル解析（M
 - **Overture Maps連携**: DuckDB + httpfsによるS3直接アクセス
 - **動的AEQD投影**: 任意地点を中心とした等距離方位図法
 - **ラスタライズ**: 建物（バイナリ）、道路（重み付き）
-- **ネットワーク構築**: NetworkXによる空間グラフ生成
+- **ネットワーク構築**: graph-toolによる空間グラフ生成
 
 ### Phase 3: Analysis Engine
 - **多重フラクタル解析 (MFA)**: 4D reshape + グリッドシフト平均化
