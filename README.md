@@ -195,10 +195,3 @@ docker run -it -v $(pwd)/data:/app/data -v $(pwd)/outputs:/app/outputs urban-ana
 - ngrok
 - tmux
 
-## ライセンス
-
-MIT License
-
-## 作者
-
-Kotaro Iwata - Iwata Global Research & Engineering
