@@ -64,7 +64,7 @@ High
 
 ## ラベル
 enhancement, analysis, critical" \
-  --label "enhancement,analysis,critical" || echo "  ⚠️  作成失敗（既に存在する可能性があります）"
+  || echo "  ⚠️  作成失敗（既に存在する可能性があります）"
 
 # Issue 2: 取得地点サンプルの選び方
 echo ""
@@ -91,7 +91,7 @@ High
 
 ## ラベル
 enhancement, data-acquisition, critical" \
-  --label "enhancement,data-acquisition,critical" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 3: 境界・取得範囲
 echo ""
@@ -117,7 +117,7 @@ High
 
 ## ラベル
 enhancement, data-acquisition, critical" \
-  --label "enhancement,data-acquisition,critical" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 4: 取得形状
 echo ""
@@ -143,7 +143,7 @@ High
 
 ## ラベル
 enhancement, data-acquisition, critical" \
-  --label "enhancement,data-acquisition,critical" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 5: NetworkX → graph-tool
 echo ""
@@ -170,7 +170,7 @@ Medium
 
 ## ラベル
 refactor, dependencies" \
-  --label "refactor,dependencies" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 6: 道路ネットワークの線形補完
 echo ""
@@ -196,7 +196,7 @@ Medium
 
 ## ラベル
 bug, preprocessing" \
-  --label "bug,preprocessing" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 7: ラスター画像の品質改善
 echo ""
@@ -222,7 +222,7 @@ Medium
 
 ## ラベル
 bug, preprocessing, visualization" \
-  --label "bug,preprocessing,visualization" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 8: 3指標の妥当性検証
 echo ""
@@ -248,7 +248,7 @@ Medium
 
 ## ラベル
 enhancement, analysis, documentation" \
-  --label "enhancement,analysis,documentation" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 9: ダッシュボードの可視化改善
 echo ""
@@ -274,7 +274,7 @@ Medium
 
 ## ラベル
 enhancement, visualization" \
-  --label "enhancement,visualization" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 10: パーコレーション解析の距離計算ロジック
 echo ""
@@ -300,7 +300,7 @@ Medium
 
 ## ラベル
 bug, analysis, question" \
-  --label "bug,analysis,question" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 11: ネットワーク形状と距離計算のスタンス
 echo ""
@@ -326,7 +326,7 @@ Medium
 
 ## ラベル
 enhancement, analysis, design" \
-  --label "enhancement,analysis,design" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 12: 3次元データの取得と解析
 echo ""
@@ -352,7 +352,7 @@ Low
 
 ## ラベル
 enhancement, feature, future" \
-  --label "enhancement,feature,future" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 13: ミクロスケール解析
 echo ""
@@ -373,7 +373,7 @@ Low
 
 ## ラベル
 enhancement, feature, future" \
-  --label "enhancement,feature,future" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 # Issue 14: マクロスケール解析
 echo ""
@@ -394,7 +394,7 @@ Low
 
 ## ラベル
 enhancement, feature, future" \
-  --label "enhancement,feature,future" || echo "  ⚠️  作成失敗"
+  || echo "  ⚠️  作成失敗"
 
 echo ""
 echo -e "${GREEN}完了しました！${NC}"
