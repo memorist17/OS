@@ -192,6 +192,8 @@ docker run -it -v $(pwd)/data:/app/data -v $(pwd)/outputs:/app/outputs urban-ana
 - scipy >= 1.11.0
 - joblib >= 1.3.0
 - tqdm >= 4.66.0
+- ngrok
+- tmux
 
 ## ライセンス
 
