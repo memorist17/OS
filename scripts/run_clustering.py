@@ -31,7 +31,13 @@ def main():
         "--config",
         type=Path,
         default=Path("configs/default.yaml"),
-        help="Config file path",
+        help="Main config file path (default.yaml)",
+    )
+    parser.add_argument(
+        "--clustering-config",
+        type=Path,
+        default=Path("configs/clustering.yaml"),
+        help="Clustering-specific config file path",
     )
     parser.add_argument(
         "--output",
@@ -59,13 +65,34 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    clustering_config = config.get("clustering", {})
-    preprocessor_config = clustering_config.get("preprocessing", {})
-    clustering_method_config = {
-        k: v
-        for k, v in clustering_config.items()
-        if k != "preprocessing"
-    }
+    # Try to load clustering-specific config
+    clustering_config_path = Path("configs/clustering.yaml")
+    if clustering_config_path.exists():
+        with open(clustering_config_path) as f:
+            clustering_full_config = yaml.safe_load(f)
+        
+        # Use clustering.yaml if available, otherwise fall back to default.yaml
+        preprocessing_config = clustering_full_config.get("preprocessing", {})
+        clustering_method_config = clustering_full_config.get("clustering", {})
+        
+        # Override with command line or default.yaml if needed
+        if not preprocessing_config:
+            clustering_config = config.get("clustering", {})
+            preprocessing_config = clustering_config.get("preprocessing", {})
+            clustering_method_config = {
+                k: v
+                for k, v in clustering_config.items()
+                if k != "preprocessing"
+            }
+    else:
+        # Fall back to default.yaml
+        clustering_config = config.get("clustering", {})
+        preprocessor_config = clustering_config.get("preprocessing", {})
+        clustering_method_config = {
+            k: v
+            for k, v in clustering_config.items()
+            if k != "preprocessing"
+        }
 
     # Find output directories
     if not args.outputs_dir.exists():

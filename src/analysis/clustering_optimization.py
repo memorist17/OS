@@ -1,4 +1,4 @@
-"""Clustering Optimization: Elbow Method and Parameter Tuning."""
+"""Clustering Optimization: Elbow Method, Parameter Grid Search."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -6,219 +6,205 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans
+from sklearn.metrics import silhouette_score
 from tqdm import tqdm
 
 from .clustering_evaluation import evaluate_clustering
 
 
 @dataclass
-class ClusteringOptimizer:
-    """
-    Optimize clustering parameters using elbow method and grid search.
+class ElbowMethod:
+    """Find optimal number of clusters using elbow method."""
     
-    Supports:
-    - Elbow method for K-means and Hierarchical clustering
-    - Parameter grid search for DBSCAN
-    - Multiple evaluation metrics
-    """
-    
-    min_clusters: int = 2
-    max_clusters: int = 10
-    n_cluster_range: list[int] | None = None  # Custom range if provided
+    k_range: list[int] | None = None
+    metric: str = "inertia"  # "inertia" or "silhouette"
+    n_init: int = 10
     random_state: int = 42
     
-    # DBSCAN parameter ranges
-    eps_range: list[float] | None = None  # Default: [0.1, 0.3, 0.5, 0.7, 1.0]
-    min_samples_range: list[int] | None = None  # Default: [2, 3, 4, 5]
+    def find_elbow(
+        self, X: np.ndarray, k_range: list[int] | None = None
+    ) -> tuple[int, dict[str, Any]]:
+        """
+        Find optimal number of clusters using elbow method.
+        
+        Args:
+            X: Feature matrix (n_samples, n_features)
+            k_range: Range of k values to test (if None, uses self.k_range)
+            
+        Returns:
+            Tuple of (optimal_k, metadata)
+        """
+        if k_range is None:
+            k_range = self.k_range or list(range(2, min(11, X.shape[0])))
+        
+        results = []
+        
+        for k in tqdm(k_range, desc="Elbow method"):
+            if k >= X.shape[0]:
+                continue
+            
+            kmeans = KMeans(
+                n_clusters=k,
+                n_init=self.n_init,
+                random_state=self.random_state,
+            )
+            labels = kmeans.fit_predict(X)
+            
+            if self.metric == "inertia":
+                score = kmeans.inertia_
+            elif self.metric == "silhouette":
+                if len(np.unique(labels)) < 2:
+                    score = -1.0
+                else:
+                    score = silhouette_score(X, labels)
+            else:
+                raise ValueError(f"Unknown metric: {self.metric}")
+            
+            results.append({
+                "k": k,
+                "score": score,
+                "inertia": kmeans.inertia_,
+            })
+        
+        results_df = pd.DataFrame(results)
+        
+        if self.metric == "inertia":
+            # Find elbow: point where decrease rate changes most
+            optimal_k = self._find_elbow_point(results_df["k"].values, results_df["score"].values)
+        else:  # silhouette
+            # Find maximum
+            optimal_k = results_df.loc[results_df["score"].idxmax(), "k"]
+        
+        metadata = {
+            "results": results_df.to_dict("records"),
+            "optimal_k": int(optimal_k),
+            "metric": self.metric,
+        }
+        
+        return int(optimal_k), metadata
+    
+    def _find_elbow_point(self, k_values: np.ndarray, scores: np.ndarray) -> int:
+        """Find elbow point using rate of change."""
+        if len(scores) < 3:
+            return int(k_values[np.argmin(scores)])
+        
+        # Calculate rate of change
+        rates = np.diff(scores)
+        # Find point where rate of change decreases most
+        rate_changes = np.diff(rates)
+        elbow_idx = np.argmax(rate_changes) + 1
+        
+        if elbow_idx >= len(k_values):
+            elbow_idx = len(k_values) - 1
+        
+        return int(k_values[elbow_idx])
+
+
+@dataclass
+class DBSCANParameterSearch:
+    """Grid search for optimal DBSCAN parameters."""
+    
+    eps_range: list[float] = None
+    min_samples_range: list[int] = None
     
     def __post_init__(self):
-        """Initialize default parameter ranges."""
-        if self.n_cluster_range is None:
-            self.n_cluster_range = list(range(self.min_clusters, self.max_clusters + 1))
-        
         if self.eps_range is None:
-            self.eps_range = [0.1, 0.3, 0.5, 0.7, 1.0]
-        
+            self.eps_range = [0.1, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0]
         if self.min_samples_range is None:
             self.min_samples_range = [2, 3, 4, 5]
     
-    def elbow_method_kmeans(
-        self, X: np.ndarray, metric: str = "inertia"
-    ) -> tuple[dict[int, dict[str, Any]], int | None]:
-        """
-        Find optimal number of clusters using elbow method for K-means.
-        
-        Args:
-            X: Feature matrix (n_samples, n_features)
-            metric: Metric to use ("inertia", "silhouette", "davies_bouldin")
-            
-        Returns:
-            Tuple of:
-            - results: Dictionary mapping n_clusters to evaluation metrics
-            - optimal_k: Optimal number of clusters (None if not found)
-        """
-        results = {}
-        inertias = []
-        silhouette_scores = []
-        db_scores = []
-        
-        for k in tqdm(self.n_cluster_range, desc="Elbow method (K-means)"):
-            kmeans = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
-            labels = kmeans.fit_predict(X)
-            
-            # Evaluate clustering
-            evaluation = evaluate_clustering(X, labels)
-            
-            results[k] = {
-                "inertia": kmeans.inertia_,
-                "silhouette_score": evaluation["silhouette_score"],
-                "davies_bouldin_score": evaluation["davies_bouldin_score"],
-                "calinski_harabasz_score": evaluation["calinski_harabasz_score"],
-                "n_clusters": evaluation["n_clusters"],
-            }
-            
-            inertias.append(kmeans.inertia_)
-            silhouette_scores.append(evaluation["silhouette_score"])
-            db_scores.append(evaluation["davies_bouldin_score"])
-        
-        # Find elbow point
-        optimal_k = self._find_elbow_point(
-            self.n_cluster_range,
-            inertias if metric == "inertia" else silhouette_scores,
-            metric=metric,
-        )
-        
-        return results, optimal_k
-    
-    def optimize_dbscan(
+    def search(
         self, X: np.ndarray
-    ) -> tuple[dict[tuple[float, int], dict[str, Any]], tuple[float, int] | None]:
+    ) -> tuple[dict[str, float], pd.DataFrame]:
         """
-        Find optimal DBSCAN parameters using grid search.
+        Search for optimal DBSCAN parameters.
         
         Args:
             X: Feature matrix (n_samples, n_features)
             
         Returns:
-            Tuple of:
-            - results: Dictionary mapping (eps, min_samples) to evaluation metrics
-            - optimal_params: Optimal (eps, min_samples) tuple (None if not found)
-        """
-        results = {}
-        best_score = -1
-        optimal_params = None
-        
-        total_combinations = len(self.eps_range) * len(self.min_samples_range)
-        
-        with tqdm(total=total_combinations, desc="DBSCAN optimization") as pbar:
-            for eps in self.eps_range:
-                for min_samples in self.min_samples_range:
-                    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-                    labels = dbscan.fit_predict(X)
-                    
-                    # Evaluate clustering
-                    evaluation = evaluate_clustering(X, labels)
-                    
-                    params = (eps, min_samples)
-                    results[params] = {
-                        "silhouette_score": evaluation["silhouette_score"],
-                        "davies_bouldin_score": evaluation["davies_bouldin_score"],
-                        "calinski_harabasz_score": evaluation["calinski_harabasz_score"],
-                        "n_clusters": evaluation["n_clusters"],
-                        "n_noise": evaluation["n_noise"],
-                        "noise_ratio": evaluation.get("n_noise", 0) / len(labels) if len(labels) > 0 else 0.0,
-                    }
-                    
-                    # Find best based on silhouette score (if valid clusters found)
-                    if evaluation["n_clusters"] >= 2:
-                        score = evaluation["silhouette_score"]
-                        if score > best_score:
-                            best_score = score
-                            optimal_params = params
-                    
-                    pbar.update(1)
-        
-        return results, optimal_params
-    
-    def compare_cluster_numbers(
-        self, X: np.ndarray, method: str = "kmeans"
-    ) -> pd.DataFrame:
-        """
-        Compare clustering quality across different numbers of clusters.
-        
-        Args:
-            X: Feature matrix (n_samples, n_features)
-            method: Clustering method ("kmeans" or "hierarchical")
-            
-        Returns:
-            DataFrame with evaluation metrics for each cluster number
+            Tuple of (best_params, results_df)
         """
         results = []
         
-        for k in tqdm(self.n_cluster_range, desc=f"Comparing {method} cluster numbers"):
-            if method == "kmeans":
-                clusterer = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
-            else:
-                from sklearn.cluster import AgglomerativeClustering
-                clusterer = AgglomerativeClustering(n_clusters=k, linkage="ward")
-            
-            labels = clusterer.fit_predict(X)
-            evaluation = evaluate_clustering(X, labels)
-            
-            result = {
-                "n_clusters": k,
-                "silhouette_score": evaluation["silhouette_score"],
-                "davies_bouldin_score": evaluation["davies_bouldin_score"],
-                "calinski_harabasz_score": evaluation["calinski_harabasz_score"],
+        for eps in tqdm(self.eps_range, desc="DBSCAN parameter search"):
+            for min_samples in self.min_samples_range:
+                dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+                labels = dbscan.fit_predict(X)
+                
+                n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+                n_noise = list(labels).count(-1)
+                noise_ratio = n_noise / len(labels) if len(labels) > 0 else 1.0
+                
+                # Evaluate if we have valid clusters
+                if n_clusters >= 2:
+                    evaluation = evaluate_clustering(X, labels)
+                    silhouette = evaluation["silhouette_score"]
+                    db_score = evaluation["davies_bouldin_score"]
+                else:
+                    silhouette = -1.0
+                    db_score = float("inf")
+                
+                results.append({
+                    "eps": eps,
+                    "min_samples": min_samples,
+                    "n_clusters": n_clusters,
+                    "n_noise": n_noise,
+                    "noise_ratio": noise_ratio,
+                    "silhouette_score": silhouette,
+                    "davies_bouldin_score": db_score,
+                })
+        
+        results_df = pd.DataFrame(results)
+        
+        # Find best parameters (maximize clusters, minimize noise, maximize silhouette)
+        valid_results = results_df[
+            (results_df["n_clusters"] >= 2) & 
+            (results_df["noise_ratio"] < 0.5) &
+            (results_df["silhouette_score"] > -1)
+        ]
+        
+        if len(valid_results) > 0:
+            best_idx = valid_results["silhouette_score"].idxmax()
+            best_params = {
+                "eps": float(valid_results.loc[best_idx, "eps"]),
+                "min_samples": int(valid_results.loc[best_idx, "min_samples"]),
             }
-            
-            if method == "kmeans":
-                result["inertia"] = clusterer.inertia_
-            
-            results.append(result)
-        
-        return pd.DataFrame(results)
-    
-    def _find_elbow_point(
-        self, k_values: list[int], scores: list[float], metric: str = "inertia"
-    ) -> int | None:
-        """
-        Find elbow point using rate of change method.
-        
-        Args:
-            k_values: List of cluster numbers
-            scores: List of scores (inertia or silhouette)
-            metric: "inertia" (decreasing) or "silhouette" (increasing)
-            
-        Returns:
-            Optimal k value or None if not found
-        """
-        if len(scores) < 3:
-            return None
-        
-        # Calculate rate of change
-        rates = []
-        for i in range(1, len(scores)):
-            if metric == "inertia":
-                # For inertia, we want to find where decrease slows down
-                rate = (scores[i-1] - scores[i]) / scores[i-1] if scores[i-1] > 0 else 0
-            else:
-                # For silhouette, we want to find where increase slows down
-                rate = (scores[i] - scores[i-1]) / abs(scores[i-1]) if scores[i-1] != 0 else 0
-            rates.append(rate)
-        
-        # Find elbow: where rate of change decreases significantly
-        if len(rates) < 2:
-            return None
-        
-        # Find maximum rate of change (elbow point)
-        if metric == "inertia":
-            # For inertia, elbow is where rate of decrease is maximum
-            max_rate_idx = np.argmax(rates)
         else:
-            # For silhouette, elbow is where rate of increase is maximum
-            max_rate_idx = np.argmax(rates)
+            # Fallback: use default
+            best_params = {"eps": 0.5, "min_samples": 3}
         
-        # Return k value at elbow point
-        return k_values[max_rate_idx + 1] if max_rate_idx + 1 < len(k_values) else k_values[-1]
+        return best_params, results_df
 
+
+def optimize_cluster_count(
+    X: np.ndarray,
+    k_range: list[int] | None = None,
+    method: str = "elbow",
+    metric: str = "inertia",
+) -> tuple[int, dict[str, Any]]:
+    """
+    Optimize cluster count using various methods.
+    
+    Args:
+        X: Feature matrix
+        k_range: Range of k values
+        method: "elbow" or "silhouette"
+        metric: Metric to use for elbow method
+        
+    Returns:
+        Tuple of (optimal_k, metadata)
+    """
+    if k_range is None:
+        k_range = list(range(2, min(11, X.shape[0])))
+    
+    if method == "elbow":
+        elbow = ElbowMethod(metric=metric, k_range=k_range)
+        optimal_k, metadata = elbow.find_elbow(X)
+    elif method == "silhouette":
+        elbow = ElbowMethod(metric="silhouette", k_range=k_range)
+        optimal_k, metadata = elbow.find_elbow(X)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+    
+    return optimal_k, metadata
