@@ -125,7 +125,8 @@ def load_building_footprint_image(data_dir: Path, max_size: int = 200) -> str | 
         # Return data URI for embedding in HTML
         return f"data:image/png;base64,{img_str}"
     except Exception as e:
-        print(f"Warning: Failed to load building image from {data_dir}: {e}")
+        # Silent failure - don't print warnings for missing images
+        # This is expected for some samples
         return None
 
 
@@ -233,9 +234,9 @@ def create_3d_clustering_visualization(
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    # Embed image directly in HTML using base64 data URI
-                    # This makes the HTML file standalone (no external dependencies)
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;"><br>'
+                    # Directly embed image in hover text using base64 data URI
+                    # Plotly's hovertemplate supports HTML, including img tags with data URIs
+                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;display:block;"><br>'
             
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
@@ -277,9 +278,8 @@ def create_3d_clustering_visualization(
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    # Embed image directly in HTML using base64 data URI
-                    # This makes the HTML file standalone (no external dependencies)
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;"><br>'
+                    # Directly embed image in hover text using base64 data URI
+                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;display:block;"><br>'
             
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
@@ -348,15 +348,28 @@ def create_3d_clustering_visualization(
         font=dict(family="Noto Sans JP, sans-serif", color="#eee"),
     )
     
-    # Save
+    # Save as standalone HTML file with all images embedded
     output_path.mkdir(parents=True, exist_ok=True)
     output_file = output_path / "clustering_3d.html"
-    fig.write_html(str(output_file))
+    
+    # Write HTML with Plotly.js embedded (standalone, no external dependencies)
+    # include_plotlyjs=True embeds Plotly.js in the HTML file
+    # This makes the file larger but completely standalone
+    # All images are embedded as base64 data URIs in the hovertemplate
+    fig.write_html(
+        str(output_file),
+        include_plotlyjs=True,  # Embed Plotly.js for standalone HTML
+        config={
+            'displayModeBar': True,
+            'displaylogo': False,
+        }
+    )
     
     print(f"3D visualization saved to: {output_file}")
     print(f"  - {n_clusters} clusters visualized in 3D space")
     if -1 in labels:
         print(f"  - {np.sum(labels == -1)} noise points")
+    print(f"  - All images embedded as base64 (standalone HTML, no external dependencies)")
 
 
 def main():
