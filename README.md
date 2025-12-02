@@ -18,6 +18,7 @@ Overture Mapsから都市データを取得し、多重フラクタル解析（M
 - **多重フラクタル解析 (MFA)**: 4D reshape + グリッドシフト平均化
 - **ラクナリティ解析**: 積分画像によるO(1)ボックスクエリ
 - **パーコレーション解析**: 距離閾値に基づく連結成分解析
+- **クラスタリング解析**: 3指標の統合・前処理・クラスタリング（Issue 1対応）
 
 ### Phase 4: Visualization
 - **Dashダッシュボード**: インタラクティブな結果可視化
@@ -47,12 +48,16 @@ OS_251127/
 │   ├── analysis/                 # Phase 3: 解析
 │   │   ├── multifractal.py
 │   │   ├── lacunarity.py
-│   │   └── percolation.py
+│   │   ├── percolation.py
+│   │   ├── feature_extraction.py
+│   │   ├── clustering_preprocessing.py
+│   │   └── clustering.py
 │   └── visualization/            # Phase 4: 可視化
 │       └── dashboard.py
 ├── scripts/
 │   ├── run_acquisition.py        # データ取得パイプライン
 │   ├── run_analysis.py           # 解析パイプライン
+│   ├── run_clustering.py         # クラスタリング解析
 │   └── run_dashboard.py          # ダッシュボード起動
 ├── outputs/                      # 解析結果（run_id単位）
 │   └── {run_id}/
@@ -101,7 +106,25 @@ python scripts/run_analysis.py \
 # 出力: outputs/{run_id}/
 ```
 
-### 3. ダッシュボード起動
+### 3. クラスタリング解析（複数地点の統合解析）
+
+```bash
+# 全解析結果からクラスタリングを実行
+python scripts/run_clustering.py \
+    --outputs-dir outputs
+
+# 特定のrun_idのみを使用
+python scripts/run_clustering.py \
+    --outputs-dir outputs \
+    --run-ids run_20241127_120000_abc12345 run_20241127_130000_def67890
+
+# 出力: outputs/clustering_results/
+#   - clustering_results.csv: 特徴量とクラスタラベル
+#   - processed_features.npy: 前処理済み特徴量
+#   - clustering_metadata.yaml: メタデータ
+```
+
+### 4. ダッシュボード起動
 
 ```bash
 # 最新の解析結果を可視化
@@ -149,6 +172,19 @@ execution:
   n_jobs: -1               # 全CPUコアを使用
   cache_integral: true
   verbose: true
+
+# クラスタリング設定
+clustering:
+  preprocessing:
+    normalization_method: "robust"  # "minmax", "standard", "robust"
+    dimensionality_reduction: "pca"  # "pca", "umap", "tsne", null
+    n_components: null              # null = 自動選択
+    random_state: 42
+  method: "kmeans"         # "kmeans", "dbscan", "hierarchical"
+  n_clusters: null         # null = 自動選択
+  eps: 0.5                 # DBSCAN用
+  min_samples: 3          # DBSCAN用
+  linkage: "ward"         # Hierarchical用
 ```
 
 ## 出力フォーマット
@@ -186,6 +222,8 @@ docker run -it -v $(pwd)/data:/app/data -v $(pwd)/outputs:/app/outputs urban-ana
 - scipy >= 1.11.0
 - joblib >= 1.3.0
 - tqdm >= 4.66.0
+- scikit-learn >= 1.3.0
+- umap-learn >= 0.5.5 (オプション: UMAP次元削減用)
 
 ## ライセンス
 

@@ -44,3 +44,19 @@ execution:
   cache_integral: true     # 積分画像をキャッシュ
   verbose: true
 
+# ===== Clustering =====
+clustering:
+  # 前処理設定
+  preprocessing:
+    normalization_method: "robust"  # "minmax", "standard", "robust"
+    dimensionality_reduction: "pca"  # "pca", "umap", "tsne", null
+    n_components: null              # null = 自動選択 (PCA: 95%分散, その他: 2)
+    random_state: 42
+  
+  # クラスタリング設定
+  method: "kmeans"         # "kmeans", "dbscan", "hierarchical"
+  n_clusters: null         # null = 自動選択 (sqrt(n_samples / 2))
+  eps: 0.5                 # DBSCAN用
+  min_samples: 3          # DBSCAN用
+  linkage: "ward"         # Hierarchical用 ("ward", "complete", "average")
+
