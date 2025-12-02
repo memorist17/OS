@@ -80,13 +80,14 @@ def load_place_names(outputs_dir: Path) -> dict[str, str]:
 def load_building_footprint_image(data_dir: Path, max_size: int = 200) -> str | None:
     """
     Load building footprint image and convert to base64.
+    Image is embedded directly in HTML for standalone viewing.
     
     Args:
         data_dir: Data directory containing buildings_binary.npy
         max_size: Maximum size for image (will be resized)
         
     Returns:
-        Base64 encoded image string or None
+        Base64 encoded image string (data URI) or None
     """
     buildings_path = data_dir / "buildings_binary.npy"
     if not buildings_path.exists():
@@ -102,9 +103,8 @@ def load_building_footprint_image(data_dir: Path, max_size: int = 200) -> str | 
         else:
             img_array = buildings.astype(np.uint8)
         
-        # Resize if too large
+        # Resize if too large (to keep HTML file size manageable)
         if img_array.shape[0] > max_size or img_array.shape[1] > max_size:
-            from PIL import Image
             img = Image.fromarray(img_array)
             img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             img_array = np.array(img)
@@ -116,11 +116,13 @@ def load_building_footprint_image(data_dir: Path, max_size: int = 200) -> str | 
         img_rgb = Image.new('RGB', img.size)
         img_rgb.paste(img)
         
-        # Convert to base64
+        # Convert to base64 - embed directly in HTML
         buffer = BytesIO()
-        img_rgb.save(buffer, format='PNG')
+        # Use optimize=True to reduce file size
+        img_rgb.save(buffer, format='PNG', optimize=True)
         img_str = base64.b64encode(buffer.getvalue()).decode()
         
+        # Return data URI for embedding in HTML
         return f"data:image/png;base64,{img_str}"
     except Exception as e:
         print(f"Warning: Failed to load building image from {data_dir}: {e}")
@@ -225,13 +227,15 @@ def create_3d_clustering_visualization(
             # Get place name
             place_name = place_names.get(sample_id, sample_id)
             
-            # Get building footprint image
+            # Get building footprint image (embedded as base64 in HTML)
             data_dir = get_data_dir_from_run_id(sample_id, outputs_dir)
             img_html = ""
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;"><br>'
+                    # Embed image directly in HTML using base64 data URI
+                    # This makes the HTML file standalone (no external dependencies)
+                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;"><br>'
             
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
@@ -273,7 +277,9 @@ def create_3d_clustering_visualization(
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;"><br>'
+                    # Embed image directly in HTML using base64 data URI
+                    # This makes the HTML file standalone (no external dependencies)
+                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;"><br>'
             
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
