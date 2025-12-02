@@ -217,27 +217,28 @@ def create_3d_clustering_visualization(
     else:
         colors = px.colors.qualitative.Set3 * ((n_clusters // 10) + 1)
     
+    # Collect all image data for embedding in HTML
+    all_image_data = {}  # sample_id -> base64 image data
+    
     # Plot each cluster
     for i, label in enumerate(unique_labels):
         mask = labels == label
         cluster_samples = [sample_ids[j] for j in range(len(sample_ids)) if mask[j]]
         
-        # Prepare hover text with place names and images
+        # Prepare hover text with place names (images will be injected via JavaScript)
         hover_texts = []
         for j, sample_id in enumerate(cluster_samples):
             # Get place name
             place_name = place_names.get(sample_id, sample_id)
             
-            # Get building footprint image (embedded as base64 in HTML)
+            # Get building footprint image and store for JavaScript injection
             data_dir = get_data_dir_from_run_id(sample_id, outputs_dir)
-            img_html = ""
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    # Directly embed image in hover text using base64 data URI
-                    # Plotly's hovertemplate supports HTML, including img tags with data URIs
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;display:block;"><br>'
+                    all_image_data[sample_id] = img_base64
             
+            # Create hover text with image container placeholder
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
                 f"Run ID: {sample_id}<br>"
@@ -245,7 +246,7 @@ def create_3d_clustering_visualization(
                 f"{dim_names[1]}: {X_3d[mask][j, 1]:.3f}<br>"
                 f"{dim_names[2]}: {X_3d[mask][j, 2]:.3f}<br>"
                 f"Cluster: {int(label)}<br>"
-                f"{img_html}"
+                f'<div id="img-{sample_id}" style="margin-top:10px;"></div>'
             )
         
         fig.add_trace(go.Scatter3d(
@@ -269,17 +270,15 @@ def create_3d_clustering_visualization(
         mask = labels == -1
         noise_samples = [sample_ids[j] for j in range(len(sample_ids)) if mask[j]]
         
-        # Prepare hover text with place names and images
+        # Prepare hover text with place names (images will be injected via JavaScript)
         hover_texts = []
         for j, sample_id in enumerate(noise_samples):
             place_name = place_names.get(sample_id, sample_id)
             data_dir = get_data_dir_from_run_id(sample_id, outputs_dir)
-            img_html = ""
             if data_dir:
                 img_base64 = load_building_footprint_image(data_dir, max_size=150)
                 if img_base64:
-                    # Directly embed image in hover text using base64 data URI
-                    img_html = f'<img src="{img_base64}" style="max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;display:block;"><br>'
+                    all_image_data[sample_id] = img_base64
             
             hover_texts.append(
                 f"<b>{place_name}</b><br>"
@@ -288,7 +287,7 @@ def create_3d_clustering_visualization(
                 f"{dim_names[1]}: {X_3d[mask][j, 1]:.3f}<br>"
                 f"{dim_names[2]}: {X_3d[mask][j, 2]:.3f}<br>"
                 f"Cluster: Noise<br>"
-                f"{img_html}"
+                f'<div id="img-{sample_id}" style="margin-top:10px;"></div>'
             )
         
         fig.add_trace(go.Scatter3d(
@@ -352,12 +351,8 @@ def create_3d_clustering_visualization(
     output_path.mkdir(parents=True, exist_ok=True)
     output_file = output_path / "clustering_3d.html"
     
-    # Write HTML with Plotly.js embedded (standalone, no external dependencies)
-    # include_plotlyjs=True embeds Plotly.js in the HTML file
-    # This makes the file larger but completely standalone
-    # All images are embedded as base64 data URIs in the hovertemplate
-    fig.write_html(
-        str(output_file),
+    # Generate HTML with Plotly.js embedded
+    html_content = fig.to_html(
         include_plotlyjs=True,  # Embed Plotly.js for standalone HTML
         config={
             'displayModeBar': True,
@@ -365,11 +360,88 @@ def create_3d_clustering_visualization(
         }
     )
     
+    # Create JavaScript code to inject images into hover tooltips
+    # Images are embedded directly in the HTML file as a JavaScript object
+    image_data_js = "const imageData = {\n"
+    for sample_id, img_base64 in all_image_data.items():
+        # Escape quotes in base64 string for JavaScript
+        image_data_js += f'    "{sample_id}": "{img_base64}",\n'
+    image_data_js += "};\n"
+    
+    js_injection = f"""
+<script>
+// 画像データをHTMLファイル内に直接埋め込む（base64エンコード済み）
+{image_data_js}
+// Plotlyのホバーイベントで画像を動的に表示
+(function() {{
+    function setupImageInjection() {{
+        // Plotlyのグラフ要素を取得
+        const gd = document.querySelector('[data-id]');
+        if (!gd) {{
+            // Plotlyがまだ初期化されていない場合、少し待つ
+            setTimeout(setupImageInjection, 100);
+            return;
+        }}
+        
+        // ホバーイベントをリッスン
+        gd.on('plotly_hover', function(data) {{
+            if (data.points && data.points.length > 0) {{
+                const point = data.points[0];
+                const hoverText = point.text || '';
+                
+                // Run IDを抽出
+                const runIdMatch = hoverText.match(/Run ID: (run_[^<]+)/);
+                if (runIdMatch) {{
+                    const sampleId = runIdMatch[1];
+                    const imgData = imageData[sampleId];
+                    
+                    if (imgData) {{
+                        // ホバーツールチップを取得
+                        const hovertext = document.querySelector('.hovertext');
+                        if (hovertext) {{
+                            // 画像コンテナを取得
+                            const imgContainer = hovertext.querySelector('div[id^="img-"]');
+                            if (imgContainer) {{
+                                // 既存の画像を削除
+                                const existingImg = imgContainer.querySelector('img');
+                                if (existingImg) existingImg.remove();
+                                
+                                // 新しい画像を作成して注入
+                                const img = document.createElement('img');
+                                img.src = imgData;
+                                img.style.cssText = 'max-width:150px;max-height:150px;margin-top:10px;border:1px solid #666;display:block;';
+                                imgContainer.appendChild(img);
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }});
+    }}
+    
+    // DOMContentLoadedまたは即座に実行
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', setupImageInjection);
+    }} else {{
+        // Plotlyの初期化を待つ
+        setTimeout(setupImageInjection, 500);
+    }}
+}})();
+</script>
+"""
+    
+    # JavaScriptを</body>タグの前に挿入
+    html_content = html_content.replace('</body>', js_injection + '</body>')
+    
+    # HTMLファイルを書き込み
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
     print(f"3D visualization saved to: {output_file}")
     print(f"  - {n_clusters} clusters visualized in 3D space")
     if -1 in labels:
         print(f"  - {np.sum(labels == -1)} noise points")
-    print(f"  - All images embedded as base64 (standalone HTML, no external dependencies)")
+    print(f"  - {len(all_image_data)} images embedded in HTML as base64 (standalone HTML, no external dependencies)")
 
 
 def main():
