@@ -48,15 +48,34 @@ execution:
 clustering:
   # 前処理設定
   preprocessing:
-    normalization_method: "robust"  # "minmax", "standard", "robust"
+    normalization_method: "minmax"  # "minmax", "standard", "robust" (比較結果で最適: minmax)
     dimensionality_reduction: "pca"  # "pca", "umap", "tsne", null
     n_components: null              # null = 自動選択 (PCA: 95%分散, その他: 2)
     random_state: 42
   
   # クラスタリング設定
   method: "kmeans"         # "kmeans", "dbscan", "hierarchical"
-  n_clusters: null         # null = 自動選択 (sqrt(n_samples / 2))
-  eps: 0.5                 # DBSCAN用
-  min_samples: 3          # DBSCAN用
+  n_clusters: null         # null = エルボー法で自動最適化
+  eps: 0.5                 # DBSCAN用 (最適化時は無視)
+  min_samples: 3          # DBSCAN用 (最適化時は無視)
   linkage: "ward"         # Hierarchical用 ("ward", "complete", "average")
+  
+  # 最適化設定
+  optimization:
+    # エルボー法によるクラスタ数最適化
+    use_elbow_method: true           # true = エルボー法を使用, false = n_clustersを直接指定
+    min_clusters: 2                  # 最小クラスタ数
+    max_clusters: 10                 # 最大クラスタ数
+    elbow_metric: "silhouette"       # "inertia", "silhouette", "davies_bouldin"
+    
+    # DBSCANパラメータ探索範囲
+    dbscan_eps_range: [0.1, 0.3, 0.5, 0.7, 1.0]  # eps探索範囲
+    dbscan_min_samples_range: [2, 3, 4, 5]      # min_samples探索範囲
+    
+    # 複数クラスタ数での比較
+    compare_cluster_numbers: true    # true = 複数のクラスタ数で比較
+    cluster_numbers_to_compare: null  # null = min_clustersからmax_clustersまで全て
+    
+    # 結果の解釈
+    interpret_results: true          # true = クラスタごとの特徴量統計を計算
 

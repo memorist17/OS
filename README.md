@@ -124,7 +124,35 @@ python scripts/run_clustering.py \
 #   - clustering_metadata.yaml: メタデータ
 ```
 
-### 3-1. クラスタリング手法の比較検証
+### 3-1. クラスタリングパラメータの最適化（推奨）
+
+```bash
+# エルボー法で最適なクラスタ数を自動探索
+python scripts/optimize_clustering.py \
+    --outputs-dir outputs \
+    --config configs/default.yaml
+
+# 出力: outputs/clustering_optimization/
+#   - elbow_method_results.csv: エルボー法の結果（各クラスタ数での評価指標）
+#   - cluster_number_comparison.csv: 複数クラスタ数での比較
+#   - optimized_clustering_results.csv: 最適化後のクラスタリング結果
+#   - cluster_interpretation.csv: 各クラスタの特徴量統計
+#   - optimization_metadata.yaml: 最適化メタデータ
+```
+
+**設定ファイル** (`configs/default.yaml`) で最適化パラメータを調整可能:
+```yaml
+clustering:
+  optimization:
+    use_elbow_method: true      # エルボー法を使用
+    min_clusters: 2              # 最小クラスタ数
+    max_clusters: 10             # 最大クラスタ数
+    elbow_metric: "silhouette"   # "inertia", "silhouette", "davies_bouldin"
+    compare_cluster_numbers: true
+    interpret_results: true      # クラスタ解釈を生成
+```
+
+### 3-2. クラスタリング手法の比較検証
 
 ```bash
 # 複数の前処理・クラスタリング手法を自動比較
@@ -138,7 +166,7 @@ python scripts/visualize_clustering_comparison.py \
 # 出力: outputs/clustering_comparison/
 #   - comparison_results.csv: 全組み合わせの評価結果
 #   - comparison_summary.yaml: 最適設定のサマリー
-#   - visualizations/*.html: 可視化結果（シルエットスコア、ヒートマップなど）
+#   - clustering_comparison_all.html: 統合可視化（1つのHTMLファイル）
 ```
 
 ### 4. ダッシュボード起動
