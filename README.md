@@ -124,6 +124,23 @@ python scripts/run_clustering.py \
 #   - clustering_metadata.yaml: メタデータ
 ```
 
+### 3-1. クラスタリング手法の比較検証
+
+```bash
+# 複数の前処理・クラスタリング手法を自動比較
+python scripts/compare_clustering_methods.py \
+    --outputs-dir outputs
+
+# 比較結果を可視化
+python scripts/visualize_clustering_comparison.py \
+    --comparison-dir outputs/clustering_comparison
+
+# 出力: outputs/clustering_comparison/
+#   - comparison_results.csv: 全組み合わせの評価結果
+#   - comparison_summary.yaml: 最適設定のサマリー
+#   - visualizations/*.html: 可視化結果（シルエットスコア、ヒートマップなど）
+```
+
 ### 4. ダッシュボード起動
 
 ```bash
