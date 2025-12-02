@@ -28,6 +28,8 @@ class ClusteringAnalyzer:
     eps: float = 0.5  # For DBSCAN
     min_samples: int = 3  # For DBSCAN
     linkage: str = "ward"  # For hierarchical
+    n_init: int = 10  # For K-means
+    max_iter: int = 300  # For K-means
     random_state: int = 42
     
     def __post_init__(self):
@@ -61,7 +63,8 @@ class ClusteringAnalyzer:
             clusterer = KMeans(
                 n_clusters=self.n_clusters,
                 random_state=self.random_state,
-                n_init=10,
+                n_init=self.n_init,
+                max_iter=self.max_iter,
             )
             labels = clusterer.fit_predict(X)
             metadata["clusterer"] = clusterer

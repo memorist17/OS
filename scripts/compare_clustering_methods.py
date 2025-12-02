@@ -196,7 +196,9 @@ def compare_methods(
                             # Set method-specific parameters
                             if cluster_method == "kmeans":
                                 clustering_config_dict["n_clusters"] = n_clusters
-                                clustering_config_dict["n_init"] = clustering_config.get("kmeans", {}).get("n_init", 10)
+                                kmeans_config = clustering_config.get("kmeans", {})
+                                clustering_config_dict["n_init"] = kmeans_config.get("n_init", 10)
+                                clustering_config_dict["max_iter"] = kmeans_config.get("max_iter", 300)
                             elif cluster_method == "dbscan":
                                 # Use parameter search if configured
                                 dbscan_config = clustering_config.get("dbscan", {})
