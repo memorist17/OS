@@ -167,6 +167,25 @@ python scripts/visualize_clustering_comparison.py \
 #   - comparison_results.csv: 全組み合わせの評価結果
 #   - comparison_summary.yaml: 最適設定のサマリー
 #   - clustering_comparison_all.html: 統合可視化（1つのHTMLファイル）
+
+**設定ファイル** (`configs/clustering.yaml`) で比較パラメータを調整可能:
+```yaml
+cluster_optimization:
+  use_elbow_method: true        # エルボー法を使用
+  compare_multiple_clusters: true  # 複数クラスタ数で比較
+  cluster_range: [2, 3, 4, 5, 6]  # 比較するクラスタ数
+
+preprocessing:
+  normalization_options: ["minmax", "standard", "robust"]
+  dimensionality_reduction_options: ["pca", null]
+
+clustering:
+  methods_to_compare: ["kmeans", "dbscan", "hierarchical"]
+  dbscan:
+    eps_range: [0.1, 0.3, 0.5, 0.7, 1.0]  # DBSCANパラメータ探索
+```
+
+異なるデータセットに対して、この設定ファイルをコピーして調整することで、最適なクラスタリング設定を見つけることができます。
 ```
 
 ### 4. ダッシュボード起動
