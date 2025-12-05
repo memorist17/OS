@@ -316,7 +316,7 @@ class TestClusteringAnalyzer:
         analyzer = ClusteringAnalyzer(n_clusters=3)
         single_df = pd.DataFrame(
             {"feature_1": [1.0], "feature_2": [2.0]},
-            index=["site_0"]
+            index=["site_0"],
         )
 
         result_df, metadata = analyzer.fit_transform(single_df)

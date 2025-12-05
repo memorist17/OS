@@ -92,10 +92,9 @@ class FeatureExtractor:
             if abs(q_val - 1) < 0.01:
                 # D(1) via derivative
                 D_q = np.gradient(tau, q)[idx] if len(q) > 1 else tau[idx]
-            elif q_val != 1:
-                D_q = tau[idx] / (q_val - 1) if q_val != 1 else tau[idx]
             else:
-                D_q = tau[idx]
+                # D(q) = τ(q) / (q - 1) for q ≠ 1
+                D_q = tau[idx] / (q_val - 1)
             features[f"mfa_D{int(q_val)}"] = float(D_q)
 
         # Asymmetry: compare α at q<0 vs q>0
@@ -528,14 +527,23 @@ class ClusteringAnalyzer:
                 axis=0
             )
             # Choose next centroid with probability proportional to distance squared
-            probs = distances / distances.sum()
-            idx = np.random.choice(n_samples, p=probs)
+            total_dist = distances.sum()
+            if total_dist == 0:
+                # All points are identical to existing centroids, choose randomly
+                idx = np.random.randint(n_samples)
+            else:
+                probs = distances / total_dist
+                idx = np.random.choice(n_samples, p=probs)
             centroids.append(X[idx])
 
         return np.array(centroids)
 
     def _dbscan(self, X: np.ndarray) -> np.ndarray:
         """DBSCAN clustering implementation.
+
+        Note: This implementation precomputes the full pairwise distance matrix,
+        which has O(n²) memory complexity. For very large datasets (>10000 samples),
+        consider using scikit-learn's DBSCAN with a ball tree or KD-tree.
 
         Args:
             X: Feature matrix
@@ -547,8 +555,9 @@ class ClusteringAnalyzer:
         labels = np.full(n_samples, -1, dtype=int)
         visited = np.zeros(n_samples, dtype=bool)
 
-        # Compute pairwise distances
-        distances = np.sqrt(((X[:, np.newaxis, :] - X[np.newaxis, :, :]) ** 2).sum(axis=2))
+        # Compute pairwise distances (O(n²) memory)
+        diff = X[:, np.newaxis, :] - X[np.newaxis, :, :]
+        distances = np.sqrt((diff**2).sum(axis=2))
 
         cluster_id = 0
 
@@ -566,19 +575,22 @@ class ClusteringAnalyzer:
             # Start new cluster
             labels[i] = cluster_id
 
-            # Expand cluster
-            seed_set = list(neighbors)
-            j = 0
-            while j < len(seed_set):
-                q = seed_set[j]
+            # Expand cluster using a set to track which points to process
+            seed_set = set(neighbors.tolist())
+            processed = {i}
+
+            while seed_set - processed:
+                q = (seed_set - processed).pop()
+                processed.add(q)
+
                 if not visited[q]:
                     visited[q] = True
                     q_neighbors = np.where(distances[q] <= self.dbscan_eps)[0]
                     if len(q_neighbors) >= self.dbscan_min_samples:
-                        seed_set.extend(q_neighbors)
+                        seed_set.update(q_neighbors.tolist())
+
                 if labels[q] == -1:
                     labels[q] = cluster_id
-                j += 1
 
             cluster_id += 1
 
