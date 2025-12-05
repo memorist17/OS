@@ -37,6 +37,14 @@ analysis:
     d_min: 1
     d_max: 100
     d_steps: 50
+    distance_type: "shortest_path"  # "edge" (fast) or "shortest_path" (accurate)
+    node_filter: null               # null for all nodes, "building" for buildings only
+
+  path_diversity:
+    enabled: false                  # Separate from percolation analysis
+    max_paths: 5
+    length_tolerance: 1.5
+    sample_pairs: 1000              # null for all pairs (expensive)
 
 # ===== Execution =====
 execution:
