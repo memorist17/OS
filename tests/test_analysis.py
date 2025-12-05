@@ -145,6 +145,250 @@ class TestLacunarityAnalyzer:
         assert lam == lacunarity_df.iloc[0]["lambda"]
 
 
+class TestPercolationAnalyzer:
+    """Test cases for PercolationAnalyzer."""
+
+    @pytest.fixture
+    def simple_graph(self):
+        """Create a simple test graph."""
+        import networkx as nx
+        G = nx.Graph()
+        # Create a small network with 5 nodes
+        # 0 -- 1 -- 2
+        # |    |
+        # 3 -- 4
+        G.add_node(0, x=0, y=0, type="building")
+        G.add_node(1, x=10, y=0, type="road")
+        G.add_node(2, x=20, y=0, type="building")
+        G.add_node(3, x=0, y=10, type="building")
+        G.add_node(4, x=10, y=10, type="road")
+
+        G.add_edge(0, 1, length=10.0)
+        G.add_edge(1, 2, length=10.0)
+        G.add_edge(0, 3, length=10.0)
+        G.add_edge(1, 4, length=10.0)
+        G.add_edge(3, 4, length=10.0)
+
+        return G
+
+    @pytest.fixture
+    def disconnected_graph(self):
+        """Create a graph with disconnected components."""
+        import networkx as nx
+        G = nx.Graph()
+        # Component 1: nodes 0, 1
+        G.add_node(0, x=0, y=0, type="building")
+        G.add_node(1, x=10, y=0, type="building")
+        G.add_edge(0, 1, length=10.0)
+
+        # Component 2: nodes 2, 3 (disconnected from component 1)
+        G.add_node(2, x=100, y=100, type="building")
+        G.add_node(3, x=110, y=100, type="building")
+        G.add_edge(2, 3, length=10.0)
+
+        return G
+
+    @pytest.fixture
+    def analyzer_edge(self):
+        """Create analyzer with edge-based distance."""
+        from src.analysis.percolation import PercolationAnalyzer
+        return PercolationAnalyzer(
+            d_min=1,
+            d_max=50,
+            d_steps=10,
+            distance_type="edge",
+        )
+
+    @pytest.fixture
+    def analyzer_shortest_path(self):
+        """Create analyzer with shortest path distance."""
+        from src.analysis.percolation import PercolationAnalyzer
+        return PercolationAnalyzer(
+            d_min=1,
+            d_max=50,
+            d_steps=10,
+            distance_type="shortest_path",
+        )
+
+    def test_edge_based_analysis(self, analyzer_edge, simple_graph):
+        """Test edge-based percolation analysis."""
+        percolation_df, mesh = analyzer_edge.analyze(simple_graph)
+
+        assert len(percolation_df) == 10  # d_steps
+        assert "d" in percolation_df.columns
+        assert "max_cluster_size" in percolation_df.columns
+        assert "n_clusters" in percolation_df.columns
+        assert "giant_fraction" in percolation_df.columns
+
+        # At small threshold, all nodes should be disconnected (5 clusters)
+        assert percolation_df.iloc[0]["n_clusters"] == 5
+        # At large threshold (>10), all nodes should be connected (1 cluster)
+        assert percolation_df.iloc[-1]["n_clusters"] == 1
+
+    def test_shortest_path_analysis(self, analyzer_shortest_path, simple_graph):
+        """Test shortest path distance percolation analysis."""
+        percolation_df, mesh = analyzer_shortest_path.analyze(simple_graph)
+
+        assert len(percolation_df) == 10
+        # At large threshold, all nodes should be connected
+        assert percolation_df.iloc[-1]["giant_fraction"] == 1.0
+
+    def test_disconnected_components_edge(self, analyzer_edge, disconnected_graph):
+        """Test handling of disconnected components with edge-based analysis."""
+        percolation_df, mesh = analyzer_edge.analyze(disconnected_graph)
+
+        # Even at maximum threshold, should have 2 components (disconnected)
+        # because edge-based only considers direct edges
+        final_clusters = percolation_df.iloc[-1]["n_clusters"]
+        assert final_clusters >= 2
+
+    def test_disconnected_components_shortest_path(
+        self, analyzer_shortest_path, disconnected_graph
+    ):
+        """Test handling of disconnected components with shortest path analysis."""
+        percolation_df, mesh = analyzer_shortest_path.analyze(disconnected_graph)
+
+        # Even at maximum threshold, disconnected pairs remain disconnected
+        final_giant_fraction = percolation_df.iloc[-1]["giant_fraction"]
+        # Giant component should be 2/4 = 0.5 at best
+        assert final_giant_fraction <= 0.5
+
+    def test_node_filter(self, simple_graph):
+        """Test node filtering for building-only analysis."""
+        from src.analysis.percolation import PercolationAnalyzer
+        analyzer = PercolationAnalyzer(
+            d_min=1,
+            d_max=50,
+            d_steps=5,
+            distance_type="shortest_path",
+            node_filter="building",
+        )
+        percolation_df, mesh = analyzer.analyze(simple_graph)
+
+        # Should only analyze building nodes (3 buildings)
+        assert mesh.shape[1] == 3
+
+    def test_find_percolation_threshold(self, analyzer_edge, simple_graph):
+        """Test finding critical percolation threshold."""
+        percolation_df, mesh = analyzer_edge.analyze(simple_graph)
+        d_critical = analyzer_edge.find_percolation_threshold(percolation_df, 0.5)
+
+        assert d_critical > 0
+        assert d_critical <= analyzer_edge.d_max
+
+    def test_compute_susceptibility(self, analyzer_edge, simple_graph):
+        """Test susceptibility computation."""
+        percolation_df, mesh = analyzer_edge.analyze(simple_graph)
+        susceptibility_df = analyzer_edge.compute_susceptibility(percolation_df)
+
+        assert len(susceptibility_df) == len(percolation_df)
+        assert "d" in susceptibility_df.columns
+        assert "susceptibility" in susceptibility_df.columns
+
+    def test_analyze_with_statistics(self, analyzer_edge, simple_graph):
+        """Test analysis with statistics."""
+        percolation_df, stats = analyzer_edge.analyze_with_statistics(simple_graph)
+
+        assert "d_critical_50" in stats
+        assert "d_critical_10" in stats
+        assert "d_critical_90" in stats
+        assert "transition_width" in stats
+        assert "max_clusters" in stats
+
+    def test_empty_graph_raises_error(self, analyzer_edge):
+        """Test that empty graph raises ValueError."""
+        import networkx as nx
+        G = nx.Graph()
+
+        with pytest.raises(ValueError, match="Graph has no nodes"):
+            analyzer_edge.analyze(G)
+
+
+class TestPathDiversityAnalyzer:
+    """Test cases for PathDiversityAnalyzer."""
+
+    @pytest.fixture
+    def simple_graph(self):
+        """Create a test graph with multiple paths."""
+        import networkx as nx
+        G = nx.Graph()
+        # Create a graph with alternative paths
+        # 0 -- 1 -- 3
+        # |    |    |
+        # 2 ------- 4
+        G.add_node(0, x=0, y=0, type="building")
+        G.add_node(1, x=10, y=0, type="road")
+        G.add_node(2, x=0, y=10, type="building")
+        G.add_node(3, x=20, y=0, type="building")
+        G.add_node(4, x=20, y=10, type="building")
+
+        G.add_edge(0, 1, length=10.0)
+        G.add_edge(1, 3, length=10.0)
+        G.add_edge(0, 2, length=10.0)
+        G.add_edge(2, 4, length=20.0)
+        G.add_edge(3, 4, length=10.0)
+        G.add_edge(1, 4, length=14.14)  # Diagonal connection
+
+        return G
+
+    @pytest.fixture
+    def analyzer(self):
+        """Create path diversity analyzer."""
+        from src.analysis.percolation import PathDiversityAnalyzer
+        return PathDiversityAnalyzer(
+            max_paths=3,
+            length_tolerance=1.5,
+            sample_pairs=None,
+        )
+
+    def test_basic_analysis(self, analyzer, simple_graph):
+        """Test basic path diversity analysis."""
+        diversity_df, stats = analyzer.analyze(simple_graph)
+
+        assert len(diversity_df) > 0
+        assert "source" in diversity_df.columns
+        assert "target" in diversity_df.columns
+        assert "shortest_distance" in diversity_df.columns
+        assert "n_diverse_paths" in diversity_df.columns
+        assert "connected" in diversity_df.columns
+
+    def test_stats_computed(self, analyzer, simple_graph):
+        """Test that statistics are properly computed."""
+        diversity_df, stats = analyzer.analyze(simple_graph)
+
+        assert "total_pairs" in stats
+        assert "connected_pairs" in stats
+        assert "disconnected_pairs" in stats
+        assert "connectivity_ratio" in stats
+        assert "avg_diverse_paths" in stats
+
+    def test_node_filter(self, simple_graph):
+        """Test node filtering for building-only analysis."""
+        from src.analysis.percolation import PathDiversityAnalyzer
+        analyzer = PathDiversityAnalyzer(
+            max_paths=3,
+            length_tolerance=1.5,
+            node_filter="building",
+        )
+        diversity_df, stats = analyzer.analyze(simple_graph)
+
+        # Should only analyze pairs between building nodes
+        # Buildings: 0, 2, 3, 4 = 4 nodes, pairs = C(4,2) = 4*3/2 = 6
+        assert stats["total_pairs"] == 6
+
+    def test_sample_pairs(self, simple_graph):
+        """Test sampling of node pairs."""
+        from src.analysis.percolation import PathDiversityAnalyzer
+        analyzer = PathDiversityAnalyzer(
+            max_paths=3,
+            length_tolerance=1.5,
+            sample_pairs=3,  # Sample only 3 pairs
+        )
+        diversity_df, stats = analyzer.analyze(simple_graph)
+
+        assert stats["total_pairs"] == 3
+
+
 class TestIntegration:
     """Integration tests for analysis pipeline."""
 
