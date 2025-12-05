@@ -373,7 +373,7 @@ class TestPathDiversityAnalyzer:
         diversity_df, stats = analyzer.analyze(simple_graph)
 
         # Should only analyze pairs between building nodes
-        # Buildings: 0, 2, 3, 4 = 4 nodes = 6 pairs
+        # Buildings: 0, 2, 3, 4 = 4 nodes, pairs = C(4,2) = 4*3/2 = 6
         assert stats["total_pairs"] == 6
 
     def test_sample_pairs(self, simple_graph):

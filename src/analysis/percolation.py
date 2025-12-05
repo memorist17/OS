@@ -409,6 +409,8 @@ class PathDiversityAnalyzer:
     length_tolerance: float = 1.5  # Paths within this factor of shortest are "diverse"
     sample_pairs: int | None = None  # Sample this many pairs (None = all pairs)
     node_filter: str | None = None  # Filter nodes by type
+    max_path_hops: int = 50  # Maximum number of hops in path search
+    random_seed: int | None = 42  # Random seed for reproducible sampling (None = random)
 
     def analyze(
         self, graph: nx.Graph | str | Path
@@ -454,7 +456,8 @@ class PathDiversityAnalyzer:
 
         # Sample pairs if requested
         if self.sample_pairs is not None and len(pairs) > self.sample_pairs:
-            np.random.seed(42)
+            if self.random_seed is not None:
+                np.random.seed(self.random_seed)
             indices = np.random.choice(len(pairs), self.sample_pairs, replace=False)
             pairs = [pairs[i] for i in indices]
             print(f"Sampling {self.sample_pairs} pairs from {n_nodes * (n_nodes - 1) // 2}")
@@ -537,7 +540,9 @@ class PathDiversityAnalyzer:
         try:
             # Use simple paths generator with cutoff
             # Note: This can be expensive; we limit by max_paths
-            for path in nx.all_simple_paths(graph, source, target, cutoff=50):
+            for path in nx.all_simple_paths(
+                graph, source, target, cutoff=self.max_path_hops
+            ):
                 path_length = sum(
                     graph[path[i]][path[i + 1]].get("length", 1.0)
                     for i in range(len(path) - 1)
