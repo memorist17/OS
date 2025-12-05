@@ -10,7 +10,7 @@ body:
       value: |
         ### 使い方
         1) 下で **project_identifier** を入力して Issue を作成
-        2) 作成後、Copilot に担当者を割り当てます
+        2) 作成後、**Copilot が自動で担当者に割り当て** られます
         3) Copilot が設計ファイル群を生成し、PR を作成します
 
         - 要件定義は `docs/{project_identifier}/requirements.md` を前提とします。
