@@ -2,13 +2,14 @@
 """Phase 4: Launch visualization dashboard."""
 
 import argparse
+import sys
 from pathlib import Path
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.visualization.dashboard import create_dashboard
 from src.visualization.comparison_dashboard import create_comparison_dashboard
+from src.visualization.dashboard import create_dashboard
+from src.visualization.gallery_dashboard import create_gallery_dashboard
 
 
 def main():
@@ -48,22 +49,42 @@ def main():
         action="store_true",
         help="Show comparison view for all places",
     )
+    parser.add_argument(
+        "--gallery",
+        action="store_true",
+        help="Show gallery view with structure visualizations for all places",
+    )
 
     args = parser.parse_args()
 
     # Determine results directory
     results_dir = args.results_dir
 
-    # Check if comparison mode or multiple runs available
+    # Check if gallery or comparison mode
+    use_gallery = args.gallery
     use_comparison = args.comparison
-    if not use_comparison and results_dir.is_dir():
+
+    if not use_gallery and not use_comparison and results_dir.is_dir():
         run_dirs = [d for d in results_dir.iterdir() if d.is_dir() and d.name.startswith("run_")]
         if len(run_dirs) > 1:
-            use_comparison = True
-            print(f"Multiple runs detected ({len(run_dirs)}), using comparison mode")
-            print("Use --comparison to explicitly enable, or specify --run-id for single view")
+            use_gallery = True  # Default to gallery mode for multiple runs
+            print(f"Multiple runs detected ({len(run_dirs)}), using gallery mode")
+            print(
+                "Use --gallery for gallery view, --comparison for comparison view, "
+                "or --run-id for single view"
+            )
 
-    if use_comparison:
+    if use_gallery:
+        # Gallery mode: show structure visualizations for all places
+        print("=" * 60)
+        print("Urban Structure Analysis Dashboard - Gallery Mode")
+        print("=" * 60)
+        print(f"Results directory: {results_dir}")
+        print(f"Server: http://{args.host}:{args.port}")
+        print("=" * 60)
+
+        app = create_gallery_dashboard(results_dir)
+    elif use_comparison:
         # Comparison mode: show all places
         print("=" * 60)
         print("Urban Structure Analysis Dashboard - Comparison Mode")
@@ -71,7 +92,7 @@ def main():
         print(f"Results directory: {results_dir}")
         print(f"Server: http://{args.host}:{args.port}")
         print("=" * 60)
-        
+
         app = create_comparison_dashboard(results_dir)
     else:
         # Single place mode
@@ -83,7 +104,10 @@ def main():
                 return 1
         elif results_dir.is_dir():
             # Find latest run directory
-            subdirs = [d for d in results_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+            subdirs = [
+                d for d in results_dir.iterdir()
+                if d.is_dir() and not d.name.startswith(".")
+            ]
             if subdirs:
                 target_dir = max(subdirs, key=lambda x: x.stat().st_mtime)
             else:
