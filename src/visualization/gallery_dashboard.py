@@ -7,6 +7,8 @@ This dashboard provides a gallery view where:
 - Interactive selection allows detailed exploration of each location
 """
 
+import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +51,6 @@ def load_all_places_for_gallery(outputs_dir: Path) -> dict[str, dict[str, Any]]:
                 display_name = site_id
                 places_file = Path("data/resolved_places.json")
                 if places_file.exists():
-                    import json
                     with open(places_file) as f:
                         places = json.load(f)
                     for place in places:
@@ -419,7 +420,6 @@ def create_location_network_figure(
 
         # Sample nodes for visualization if too large
         if G.number_of_nodes() > max_nodes:
-            import random
             nodes_to_keep = random.sample(list(G.nodes()), max_nodes)
             G = G.subgraph(nodes_to_keep).copy()
 
