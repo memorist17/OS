@@ -129,6 +129,16 @@ canvas:
   half_size_m: 1000        # 中心から±1000m
   resolution_m: 1.0        # 1px = 1m
 
+# ラスタライズ品質設定
+rasterization:
+  supersample_factor: 2    # アンチエイリアシング用スーパーサンプリング倍率
+                          # 1 = 無効, 2-4 = 推奨 (高品質), 高いほど処理時間増加
+  interpolation: "bicubic" # ダウンサンプリング補間方法
+                          # "nearest"  = 最速・最低品質
+                          # "bilinear" = 良好なバランス
+                          # "bicubic"  = より高品質・やや低速
+                          # "lanczos"  = 最高品質・最も低速
+
 # 解析パラメータ
 analysis:
   r_min: 2
@@ -156,6 +166,42 @@ execution:
   cache_integral: true
   verbose: true
 ```
+
+### ラスター品質改善について
+
+バージョン0.1.0より、ラスタライズ処理に以下の品質改善オプションが追加されました：
+
+**アンチエイリアシング（スーパーサンプリング）**
+- `supersample_factor`: 内部レンダリング解像度の倍率
+  - `1`: 無効（デフォルトの動作）
+  - `2`: 2倍解像度でレンダリング後にダウンサンプル（推奨）
+  - `4`: 4倍解像度（最高品質、処理時間増加）
+
+**補間方法**
+- `interpolation`: ダウンサンプリング時の補間アルゴリズム
+  - `"nearest"`: ニアレストネイバー（最速、ジャギー発生）
+  - `"bilinear"`: バイリニア補間（良好なバランス）
+  - `"bicubic"`: バイキュービック補間（推奨、高品質）
+  - `"lanczos"`: Lanczos補間（最高品質、低速）
+
+**使用例**
+```yaml
+# 高品質設定（推奨）
+rasterization:
+  supersample_factor: 2
+  interpolation: "bicubic"
+
+# 最高品質設定（処理時間増加）
+rasterization:
+  supersample_factor: 4
+  interpolation: "lanczos"
+
+# 高速設定（品質低下）
+rasterization:
+  supersample_factor: 1
+  interpolation: "nearest"
+```
+
 
 ## 出力フォーマット
 
