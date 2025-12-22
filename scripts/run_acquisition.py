@@ -50,7 +50,7 @@ def save_metadata(
     """Save metadata.yaml with processing details."""
     # Convert numpy types to native Python types
     stats = convert_to_native(stats)
-    
+
     metadata = {
         "meta_info": {
             "site_id": site_id,
@@ -111,7 +111,8 @@ def main():
     print("=" * 60)
     print(f"Site: {args.site_id}")
     print(f"Center: ({args.lat}, {args.lon})")
-    print(f"Canvas: ±{config['canvas']['half_size_m']}m ({config['canvas']['half_size_m'] * 2}m square)")
+    canvas_size_m = config["canvas"]["half_size_m"] * 2
+    print(f"Canvas: ±{config['canvas']['half_size_m']}m ({canvas_size_m}m square)")
     print(f"Resolution: {config['canvas']['resolution_m']}m/px")
     print("=" * 60)
 
@@ -159,10 +160,18 @@ def main():
     # Step 4: Rasterize
     print("\n[4/5] Rasterizing...")
     canvas_size = int(config["canvas"]["half_size_m"] * 2 / config["canvas"]["resolution_m"])
+
+    # Get rasterization quality settings with defaults
+    raster_config = config.get("rasterization", {})
+    supersample_factor = raster_config.get("supersample_factor", 1)
+    interpolation = raster_config.get("interpolation", "bilinear")
+
     rasterizer = Rasterizer(
         canvas_size=canvas_size,
         resolution_m=config["canvas"]["resolution_m"],
         half_size_m=config["canvas"]["half_size_m"],
+        supersample_factor=supersample_factor,
+        interpolation=interpolation,
     )
 
     buildings_raster = rasterizer.rasterize_buildings(buildings)

@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
+import cv2
 import geopandas as gpd
 import numpy as np
 from rasterio import features
@@ -10,17 +12,37 @@ from rasterio.transform import from_bounds
 from shapely.geometry import mapping
 from tqdm import tqdm
 
+# Type aliases for quality options
+InterpolationMethod = Literal["nearest", "bilinear", "bicubic", "lanczos"]
+
 
 @dataclass
 class Rasterizer:
-    """Convert vector geometries to raster images."""
+    """Convert vector geometries to raster images with quality options.
+
+    Attributes:
+        canvas_size: Output size in pixels (square)
+        resolution_m: Meters per pixel resolution
+        half_size_m: Canvas half-size in meters (±half_size_m)
+        supersample_factor: Rendering multiplier for anti-aliasing (1 = no supersampling)
+        interpolation: Downsampling method when supersample_factor > 1
+            - "nearest": No interpolation (fastest, lowest quality)
+            - "bilinear": Bilinear interpolation (good balance)
+            - "bicubic": Bicubic interpolation (better quality, slower)
+            - "lanczos": Lanczos interpolation (best quality, slowest)
+    """
 
     canvas_size: int  # pixels (square)
     resolution_m: float = 1.0
     half_size_m: float = 1000.0  # canvas半径
+    supersample_factor: int = 1  # Anti-aliasing via supersampling
+    interpolation: InterpolationMethod = "bilinear"
 
     def __post_init__(self) -> None:
         """Initialize raster transform."""
+        if self.supersample_factor < 1:
+            raise ValueError("supersample_factor must be >= 1")
+
         # キャンバス範囲: -half_size_m to +half_size_m
         self.bounds = (
             -self.half_size_m,
@@ -28,13 +50,44 @@ class Rasterizer:
             self.half_size_m,
             self.half_size_m,
         )
-        self.transform = from_bounds(*self.bounds, self.canvas_size, self.canvas_size)
+
+        # 内部レンダリングサイズ（スーパーサンプリング適用）
+        self._internal_size = self.canvas_size * self.supersample_factor
+        self.transform = from_bounds(*self.bounds, self._internal_size, self._internal_size)
+
+        # OpenCV interpolation mapping
+        self._interpolation_map = {
+            "nearest": cv2.INTER_NEAREST,
+            "bilinear": cv2.INTER_LINEAR,
+            "bicubic": cv2.INTER_CUBIC,
+            "lanczos": cv2.INTER_LANCZOS4,
+        }
+
+    def _downsample(self, array: np.ndarray) -> np.ndarray:
+        """Downsample array from internal size to output size.
+
+        Args:
+            array: High-resolution array (internal_size, internal_size)
+
+        Returns:
+            Downsampled array (canvas_size, canvas_size)
+        """
+        if self.supersample_factor == 1:
+            return array
+
+        interp_method = self._interpolation_map[self.interpolation]
+        downsampled = cv2.resize(
+            array,
+            (self.canvas_size, self.canvas_size),
+            interpolation=interp_method,
+        )
+        return downsampled
 
     def rasterize_buildings(
         self, buildings: gpd.GeoDataFrame, verbose: bool = True
     ) -> np.ndarray:
         """
-        Rasterize buildings to binary image (0/1).
+        Rasterize buildings to binary image (0/1) with anti-aliasing.
 
         Args:
             buildings: GeoDataFrame with building polygons in local coordinates
@@ -47,21 +100,34 @@ class Rasterizer:
             return np.zeros((self.canvas_size, self.canvas_size), dtype=np.uint8)
 
         if verbose:
-            print(f"Rasterizing {len(buildings)} buildings...")
+            ss_msg = (
+                f" (supersample {self.supersample_factor}x)"
+                if self.supersample_factor > 1
+                else ""
+            )
+            print(f"Rasterizing {len(buildings)} buildings{ss_msg}...")
 
         # Convert to shapes for rasterio
-        shapes = [(mapping(geom), 1) for geom in buildings.geometry if geom is not None and geom.is_valid]
+        shapes = [
+            (mapping(geom), 1)
+            for geom in buildings.geometry
+            if geom is not None and geom.is_valid
+        ]
 
         if not shapes:
             return np.zeros((self.canvas_size, self.canvas_size), dtype=np.uint8)
 
+        # Rasterize at internal (supersampled) resolution
         raster = features.rasterize(
             shapes=shapes,
-            out_shape=(self.canvas_size, self.canvas_size),
+            out_shape=(self._internal_size, self._internal_size),
             transform=self.transform,
             fill=0,
             dtype=np.uint8,
         )
+
+        # Downsample to target size with quality interpolation
+        raster = self._downsample(raster)
 
         if verbose:
             coverage = np.sum(raster > 0) / raster.size * 100
@@ -76,7 +142,7 @@ class Rasterizer:
         verbose: bool = True,
     ) -> np.ndarray:
         """
-        Rasterize roads to weighted grayscale image (0-255).
+        Rasterize roads to weighted grayscale image (0-255) with anti-aliasing.
 
         Roads are buffered by their width and rendered with intensity
         proportional to road importance.
@@ -93,13 +159,23 @@ class Rasterizer:
             return np.zeros((self.canvas_size, self.canvas_size), dtype=np.uint8)
 
         if verbose:
-            print(f"Rasterizing {len(roads)} road segments...")
+            ss_msg = (
+                f" (supersample {self.supersample_factor}x)"
+                if self.supersample_factor > 1
+                else ""
+            )
+            print(f"Rasterizing {len(roads)} road segments{ss_msg}...")
 
         # Buffer roads by half their width to get polygons
         shapes = []
         max_width = roads[width_column].max() if width_column in roads.columns else 20
 
-        for _, row in tqdm(roads.iterrows(), total=len(roads), desc="Buffering roads", disable=not verbose):
+        for _, row in tqdm(
+            roads.iterrows(),
+            total=len(roads),
+            desc="Buffering roads",
+            disable=not verbose,
+        ):
             geom = row.geometry
             if geom is None or geom.is_empty or not geom.is_valid:
                 continue
@@ -116,17 +192,21 @@ class Rasterizer:
         if not shapes:
             return np.zeros((self.canvas_size, self.canvas_size), dtype=np.uint8)
 
+        # Rasterize at internal (supersampled) resolution
         raster = features.rasterize(
             shapes=shapes,
-            out_shape=(self.canvas_size, self.canvas_size),
+            out_shape=(self._internal_size, self._internal_size),
             transform=self.transform,
             fill=0,
             dtype=np.uint8,
             merge_alg=features.MergeAlg.add,  # Overlap areas get summed
         )
 
-        # Clip to 255
+        # Clip to 255 before downsampling
         raster = np.clip(raster, 0, 255).astype(np.uint8)
+
+        # Downsample to target size with quality interpolation
+        raster = self._downsample(raster)
 
         if verbose:
             coverage = np.sum(raster > 0) / raster.size * 100

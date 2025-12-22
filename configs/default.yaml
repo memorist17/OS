@@ -6,6 +6,11 @@ canvas:
   half_size_m: 1000        # 中心から±1000m = 2km四方
   resolution_m: 1.0        # 1px = 1m
 
+# ラスタライズ品質設定
+rasterization:
+  supersample_factor: 2    # アンチエイリアシング用スーパーサンプリング倍率 (1=無効, 2-4推奨)
+  interpolation: "bicubic" # ダウンサンプリング補間方法: "nearest", "bilinear", "bicubic", "lanczos"
+
 road_width_fallback:
   motorway: 20
   trunk: 15
