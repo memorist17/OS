@@ -229,10 +229,13 @@ def main():
         if not network_path.exists():
             print("Network graph not found, skipping percolation analysis")
         else:
+            perc_config = analysis_config["percolation"]
             perc_analyzer = PercolationAnalyzer(
-                d_min=analysis_config["percolation"]["d_min"],
-                d_max=analysis_config["percolation"]["d_max"],
-                d_steps=analysis_config["percolation"]["d_steps"],
+                d_min=perc_config["d_min"],
+                d_max=perc_config["d_max"],
+                d_steps=perc_config["d_steps"],
+                distance_type=perc_config.get("distance_type", "edge"),
+                node_filter=perc_config.get("node_filter"),
             )
 
             try:
@@ -253,6 +256,44 @@ def main():
 
             except Exception as e:
                 print(f"Percolation failed: {e}")
+
+    # =========================================================================
+    # Path Diversity Analysis (optional, separate from percolation)
+    # =========================================================================
+    path_div_config = analysis_config.get("path_diversity", {})
+    if path_div_config.get("enabled", False):
+        print("\n" + "=" * 60)
+        print("[Optional] Path Diversity Analysis")
+        print("=" * 60)
+
+        network_path = args.data_dir / "network.graphml"
+        if not network_path.exists():
+            print("Network graph not found, skipping path diversity analysis")
+        else:
+            from src.analysis.percolation import PathDiversityAnalyzer
+
+            path_div_analyzer = PathDiversityAnalyzer(
+                max_paths=path_div_config.get("max_paths", 5),
+                length_tolerance=path_div_config.get("length_tolerance", 1.5),
+                sample_pairs=path_div_config.get("sample_pairs"),
+                node_filter=path_div_config.get("node_filter"),
+            )
+
+            try:
+                diversity_df, diversity_stats = path_div_analyzer.analyze(network_path)
+
+                # Save results
+                diversity_df.to_csv(output_dir / "path_diversity.csv", index=False)
+
+                with open(output_dir / "path_diversity_stats.yaml", "w") as f:
+                    yaml.dump(diversity_stats, f)
+
+                print(f"Path Diversity complete: {len(diversity_df)} pairs analyzed")
+                print(f"  Connectivity ratio: {diversity_stats['connectivity_ratio']:.2%}")
+                print(f"  Avg diverse paths: {diversity_stats['avg_diverse_paths']:.2f}")
+
+            except Exception as e:
+                print(f"Path Diversity failed: {e}")
 
     # =========================================================================
     # Summary
