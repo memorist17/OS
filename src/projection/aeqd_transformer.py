@@ -4,7 +4,10 @@ from dataclasses import dataclass
 
 import geopandas as gpd
 from pyproj import CRS, Transformer
-from shapely.geometry import box
+try:
+    from shapely import box
+except ImportError:
+    from shapely.geometry import box
 
 
 @dataclass

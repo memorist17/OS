@@ -7,7 +7,7 @@ from typing import Any
 import geopandas as gpd
 import networkx as nx
 import numpy as np
-from shapely.geometry import LineString, Point
+from shapely import LineString, Point
 from shapely.ops import linemerge, unary_union
 from tqdm import tqdm
 

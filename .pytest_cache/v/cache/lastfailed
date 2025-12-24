@@ -1,0 +1,23 @@
+{
+  "tests/test_analysis.py::TestMultifractalAnalyzer": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer": true,
+  "tests/test_analysis.py::TestPercolationAnalyzer": true,
+  "tests/test_analysis.py::TestPathDiversityAnalyzer": true,
+  "tests/test_analysis.py::TestIntegration": true,
+  "tests/test_clustering.py::TestFeatureExtractor": true,
+  "tests/test_clustering.py::TestClusteringAnalyzer": true,
+  "tests/test_clustering.py::TestCreateFeatureMatrix": true,
+  "tests/test_clustering.py::TestIntegrationClustering": true,
+  "tests/test_projection.py::TestAEQDTransformer": true,
+  "tests/test_analysis.py::TestMultifractalAnalyzer::test_q_values_generation": true,
+  "tests/test_analysis.py::TestMultifractalAnalyzer::test_uniform_image_analysis": true,
+  "tests/test_analysis.py::TestMultifractalAnalyzer::test_random_image_analysis": true,
+  "tests/test_analysis.py::TestMultifractalAnalyzer::test_spectrum_width": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer::test_empty_image_lacunarity": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer::test_full_image_lacunarity": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer::test_random_binary_image": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer::test_decay_exponent": true,
+  "tests/test_analysis.py::TestLacunarityAnalyzer::test_lacunarity_at_scale": true,
+  "tests/test_projection.py::TestAEQDTransformer::test_canvas_shape": true,
+  "tests/test_projection.py::TestAEQDTransformer::test_coords_to_pixel": true
+}

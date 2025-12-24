@@ -7,8 +7,15 @@ import geopandas as gpd
 import numpy as np
 from rasterio import features
 from rasterio.transform import from_bounds
-from shapely.geometry import mapping
 from tqdm import tqdm
+
+# Shapely 2.0+ compatibility
+try:
+    from shapely.geometry import mapping
+except ImportError:
+    # Fallback for shapely 2.0+
+    def mapping(geom):
+        return geom.__geo_interface__
 
 
 @dataclass

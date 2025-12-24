@@ -4,6 +4,8 @@ Based on official docs: https://docs.overturemaps.org
 Uses anonymous S3 access to overturemaps-us-west-2 bucket.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 import duckdb

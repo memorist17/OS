@@ -47,8 +47,16 @@ def load_results(results_dir: Path) -> dict[str, Any]:
 
     lac_fit_path = results_dir / "lacunarity_fit.yaml"
     if lac_fit_path.exists():
-        with open(lac_fit_path) as f:
-            results["lacunarity_fit"] = yaml.safe_load(f)
+        try:
+            with open(lac_fit_path) as f:
+                # Try safe_load first, fallback to load for NumPy types
+                try:
+                    results["lacunarity_fit"] = yaml.safe_load(f)
+                except yaml.YAMLError:
+                    f.seek(0)
+                    results["lacunarity_fit"] = yaml.load(f, Loader=yaml.SafeLoader)
+        except Exception as e:
+            print(f"Warning: Could not load lacunarity_fit.yaml: {e}")
 
     # Load Percolation results
     perc_path = results_dir / "percolation.csv"
@@ -57,8 +65,16 @@ def load_results(results_dir: Path) -> dict[str, Any]:
 
     perc_stats_path = results_dir / "percolation_stats.yaml"
     if perc_stats_path.exists():
-        with open(perc_stats_path) as f:
-            results["percolation_stats"] = yaml.safe_load(f)
+        try:
+            with open(perc_stats_path) as f:
+                # Try safe_load first, fallback to load for NumPy types
+                try:
+                    results["percolation_stats"] = yaml.safe_load(f)
+                except yaml.YAMLError:
+                    f.seek(0)
+                    results["percolation_stats"] = yaml.load(f, Loader=yaml.SafeLoader)
+        except Exception as e:
+            print(f"Warning: Could not load percolation_stats.yaml: {e}")
 
     # Load raster data and network from data directory
     if "config" in results:
