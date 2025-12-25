@@ -60,7 +60,7 @@ class AEQDTransformer:
             gdf: GeoDataFrame in local AEQD coordinates
 
         Returns:
-            Clipped GeoDataFrame
+            Clipped GeoDataFrame (empty geometries removed)
         """
         if len(gdf) == 0:
             return gdf
@@ -69,6 +69,23 @@ class AEQDTransformer:
         canvas_box = box(*canvas_bounds)
 
         clipped = gdf.clip(canvas_box)
+        
+        # Remove empty geometries after clipping
+        if len(clipped) > 0:
+            # Filter out empty geometries
+            clipped = clipped[~clipped.geometry.is_empty].copy()
+            
+            # For LineString geometries, also filter out those with less than 2 points
+            # (which can happen if clipping results in invalid geometries)
+            if len(clipped) > 0:
+                valid_mask = clipped.geometry.apply(
+                    lambda geom: geom is not None 
+                    and not geom.is_empty 
+                    and geom.is_valid
+                    and (geom.geom_type != "LineString" or len(geom.coords) >= 2)
+                )
+                clipped = clipped[valid_mask].copy()
+        
         return clipped
 
     def get_canvas_bounds(self) -> tuple[float, float, float, float]:

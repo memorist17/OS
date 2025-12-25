@@ -1,0 +1,116 @@
+# Clustering Configuration - クラスタリング設定ファイル
+# ============================================================
+# このファイルでクラスタリングの全パラメータを管理します
+# 異なるデータセットに対して設定を変更して使用できます
+
+# ===== クラスタ数最適化設定 =====
+cluster_optimization:
+  # エルボー法による最適クラスタ数の探索
+  use_elbow_method: true
+  elbow_range: [2, 10]  # 探索範囲 [min, max]
+  elbow_metric: "inertia"  # "inertia" or "silhouette"
+  elbow_n_init: 10  # K-meansの初期化回数
+  
+  # 複数クラスタ数での比較
+  compare_multiple_clusters: true
+  cluster_range: [2, 3, 4, 5, 6]  # 比較するクラスタ数のリスト
+  
+  # 最適クラスタ数の選択基準
+  selection_criterion: "silhouette"  # "silhouette", "davies_bouldin", "calinski_harabasz", "elbow"
+  min_cluster_size: 2  # 最小クラスタサイズ（これより小さいクラスタは無効）
+
+# ===== 前処理設定 =====
+preprocessing:
+  # 正規化手法
+  normalization_method: "minmax"  # "minmax", "standard", "robust"
+  normalization_options: ["minmax", "standard", "robust"]  # 比較する正規化手法
+  
+  # 次元削減
+  dimensionality_reduction: "pca"  # "pca", "umap", "tsne", null
+  dimensionality_reduction_options: ["pca", null]  # 比較する次元削減手法
+  n_components: null  # null = 自動選択 (PCA: 95%分散, その他: 2)
+  pca_variance_threshold: 0.95  # PCAで保持する分散の割合
+  
+  random_state: 42
+
+# ===== クラスタリング手法設定 =====
+clustering:
+  # デフォルト手法
+  default_method: "kmeans"  # "kmeans", "dbscan", "hierarchical"
+  
+  # 比較する手法
+  methods_to_compare: ["kmeans", "dbscan", "hierarchical"]
+  
+  # K-means設定
+  kmeans:
+    n_init: 10  # 初期化回数
+    max_iter: 300
+    random_state: 42
+  
+  # DBSCAN設定
+  dbscan:
+    # epsの探索範囲（グリッドサーチ）
+    eps_range: [0.1, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0]
+    min_samples_range: [2, 3, 4, 5]
+    # デフォルト値（探索しない場合）
+    default_eps: 0.5
+    default_min_samples: 3
+  
+  # Hierarchical設定
+  hierarchical:
+    linkage_options: ["ward", "complete", "average"]  # 比較するlinkage
+    default_linkage: "ward"
+
+# ===== 評価設定 =====
+evaluation:
+  # 使用する評価指標
+  metrics: ["silhouette", "davies_bouldin", "calinski_harabasz"]
+  
+  # 統計的有意性の検証
+  bootstrap_validation: true
+  bootstrap_n_iterations: 100  # ブートストラップの反復回数
+  bootstrap_confidence: 0.95  # 信頼区間
+  
+  # 安定性検証
+  stability_check: true
+  stability_n_runs: 10  # 安定性チェックの実行回数
+  stability_threshold: 0.8  # クラスタラベルの一致率の閾値
+
+# ===== 出力設定 =====
+output:
+  # 結果の保存先
+  results_dir: "outputs/clustering_results"
+  comparison_dir: "outputs/clustering_comparison"
+  
+  # 保存するファイル
+  save_features: true
+  save_processed_features: true
+  save_metadata: true
+  save_visualizations: true
+  
+  # 可視化設定
+  visualization:
+    create_combined_html: true
+    create_separate_htmls: false
+    figure_height: 1400
+    figure_width: 1600
+
+# ===== データセット固有の設定 =====
+# 異なるデータセットに対して、このセクションをコピーして調整
+dataset_specific:
+  # サンプル数に基づく自動調整
+  auto_adjust_for_sample_size: true
+  
+  # サンプル数が少ない場合の設定
+  small_dataset:
+    min_samples: 3  # 最小サンプル数
+    max_clusters_ratio: 0.3  # 最大クラスタ数 = サンプル数 * この値
+    use_simplified_evaluation: true  # 簡易評価を使用
+  
+  # サンプル数が多い場合の設定
+  large_dataset:
+    min_samples: 10
+    max_clusters_ratio: 0.1
+    use_sampling: false  # サンプリングを使用するか
+    sample_size: 1000  # サンプリングサイズ
+

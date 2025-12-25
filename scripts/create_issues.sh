@@ -401,3 +401,6 @@ echo -e "${GREEN}完了しました！${NC}"
 echo ""
 echo "作成されたイシューを確認:"
 echo "  gh issue list --repo ${REPO}"
+
+
+

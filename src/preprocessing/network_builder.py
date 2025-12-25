@@ -75,11 +75,21 @@ class NetworkBuilder:
             if geom is None or geom.is_empty or not geom.is_valid:
                 continue
 
-            if geom.geom_type == "MultiLineString":
-                lines = list(geom.geoms)
-            elif geom.geom_type == "LineString":
+            # Handle different geometry types
+            lines = []
+            if geom.geom_type == "LineString":
                 lines = [geom]
-            else:
+            elif geom.geom_type == "MultiLineString":
+                lines = [line for line in geom.geoms if not line.is_empty and line.is_valid]
+            elif geom.geom_type == "GeometryCollection":
+                # Handle GeometryCollection (can occur after clipping)
+                for sub_geom in geom.geoms:
+                    if sub_geom.geom_type == "LineString" and not sub_geom.is_empty and sub_geom.is_valid:
+                        lines.append(sub_geom)
+                    elif sub_geom.geom_type == "MultiLineString":
+                        lines.extend([line for line in sub_geom.geoms if not line.is_empty and line.is_valid])
+            
+            if not lines:
                 continue
 
             for line in lines:
@@ -129,24 +139,88 @@ class NetworkBuilder:
                 building_nodes.append((node_counter, x, y))
                 node_counter += 1
 
-            # Step 4: Connect buildings to nearest road node
-            if building_nodes and len(node_coords) > 0:
+            # Step 4: Connect buildings to nearest road segment (not just road node)
+            if building_nodes and len(roads) > 0:
                 if verbose:
                     print("Connecting buildings to road network...")
 
-                road_node_array = np.array([(x, y) for (x, y), _ in node_coords.items()])
-                road_node_ids = [nid for _, nid in node_coords.items()]
+                # Prepare road segments for distance calculation
+                road_segments = []
+                for idx, row in roads.iterrows():
+                    geom = row.geometry
+                    if geom is None or geom.is_empty or not geom.is_valid:
+                        continue
+                    
+                    # Handle different geometry types
+                    lines = []
+                    if geom.geom_type == "LineString":
+                        lines = [geom]
+                    elif geom.geom_type == "MultiLineString":
+                        lines = [line for line in geom.geoms if not line.is_empty and line.is_valid]
+                    elif geom.geom_type == "GeometryCollection":
+                        for sub_geom in geom.geoms:
+                            if sub_geom.geom_type == "LineString" and not sub_geom.is_empty and sub_geom.is_valid:
+                                lines.append(sub_geom)
+                            elif sub_geom.geom_type == "MultiLineString":
+                                lines.extend([line for line in sub_geom.geoms if not line.is_empty and line.is_valid])
+                    
+                    road_segments.extend(lines)
 
-                for bnode, bx, by in tqdm(building_nodes, desc="Connecting buildings", disable=not verbose):
-                    # Find nearest road node
-                    distances = np.sqrt((road_node_array[:, 0] - bx) ** 2 +
-                                        (road_node_array[:, 1] - by) ** 2)
-                    nearest_idx = np.argmin(distances)
-                    nearest_road_node = road_node_ids[nearest_idx]
-                    nearest_distance = distances[nearest_idx]
-
-                    # Add virtual edge
-                    G.add_edge(bnode, nearest_road_node, length=nearest_distance, type="virtual")
+                if not road_segments:
+                    if verbose:
+                        print("No valid road segments found for building connection")
+                else:
+                    for bnode, bx, by in tqdm(building_nodes, desc="Connecting buildings", disable=not verbose):
+                        building_point = Point(bx, by)
+                        
+                        # Find nearest road segment
+                        min_distance = float('inf')
+                        nearest_segment = None
+                        nearest_point_on_segment = None
+                        
+                        for segment in road_segments:
+                            # Calculate distance from building to segment
+                            distance = building_point.distance(segment)
+                            
+                            if distance < min_distance:
+                                min_distance = distance
+                                nearest_segment = segment
+                                
+                                # Find the nearest point on the segment
+                                # Use project to get the distance along the segment
+                                projected_distance = nearest_segment.project(building_point)
+                                nearest_point_on_segment = nearest_segment.interpolate(projected_distance)
+                        
+                        if nearest_point_on_segment is not None:
+                            # Get coordinates of nearest point on segment
+                            px, py = nearest_point_on_segment.x, nearest_point_on_segment.y
+                            
+                            # Check if there's an existing node within snap_tolerance
+                            # First check existing road nodes
+                            road_node_array = np.array([(x, y) for (x, y), _ in node_coords.items()])
+                            road_node_ids = [nid for _, nid in node_coords.items()]
+                            
+                            if len(road_node_array) > 0:
+                                distances_to_nodes = np.sqrt((road_node_array[:, 0] - px) ** 2 +
+                                                             (road_node_array[:, 1] - py) ** 2)
+                                min_node_distance = np.min(distances_to_nodes)
+                                
+                                if min_node_distance <= self.snap_tolerance:
+                                    # Use existing node
+                                    nearest_idx = np.argmin(distances_to_nodes)
+                                    nearest_road_node = road_node_ids[nearest_idx]
+                                    connection_distance = np.sqrt((bx - px) ** 2 + (by - py) ** 2)
+                                else:
+                                    # Create new node on road segment
+                                    nearest_road_node = get_or_create_node(px, py)
+                                    connection_distance = min_distance
+                            else:
+                                # No existing nodes, create new one
+                                nearest_road_node = get_or_create_node(px, py)
+                                connection_distance = min_distance
+                            
+                            # Add virtual edge from building to road segment point
+                            G.add_edge(bnode, nearest_road_node, length=connection_distance, type="virtual")
 
             if verbose:
                 print(f"Final network: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
