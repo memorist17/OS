@@ -13,8 +13,10 @@ from dash.dependencies import Input, Output, State
 
 from .cluster_image_view import (
     _calculate_zoom_level,
+    _get_cluster_color,
     create_interactive_cluster_figure,
     create_point_detail_view,
+    create_static_cluster_gallery,
     update_cluster_figure_display,
 )
 from .dashboard import load_results
@@ -26,6 +28,75 @@ from .indicator_image_view import (
     extract_indicator_value,
     update_chart_highlight,
 )
+import json
+
+
+def _create_clustering_chart(
+    cluster_results: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> go.Figure:
+    """Create a simple 2D clustering scatter plot.
+    
+    Args:
+        cluster_results: Cluster analysis results
+        config: Configuration dictionary
+    
+    Returns:
+        Plotly Figure
+    """
+    if config is None:
+        config = {}
+    
+    coordinates = np.array(cluster_results["coordinates"])
+    labels = np.array(cluster_results["labels"])
+    n_clusters = len(set(labels))
+    
+    chart_height = config.get("square_chart_size", 400)
+    
+    fig = go.Figure()
+    
+    # Plot each cluster
+    for cluster_id in range(n_clusters):
+        mask = labels == cluster_id
+        cluster_coords = coordinates[mask]
+        
+        fig.add_trace(go.Scatter(
+            x=cluster_coords[:, 0],
+            y=cluster_coords[:, 1],
+            mode="markers",
+            name=f"Cluster {cluster_id}",
+            marker=dict(
+                size=8,
+                color=_get_cluster_color(cluster_id),
+                opacity=0.7,
+            ),
+        ))
+    
+    fig.update_layout(
+        title="",
+        xaxis_title="Dimension 1",
+        yaxis_title="Dimension 2",
+        height=chart_height,
+        width=chart_height,  # Square
+        hovermode="closest",
+        template="plotly_dark",
+        paper_bgcolor="#161b22",
+        plot_bgcolor="#0d1117",
+        font=dict(family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif", color="#c9d1d9", size=10),
+        autosize=False,
+        margin=dict(l=50, r=20, t=20, b=50),
+        showlegend=True,
+        xaxis=dict(
+            gridcolor="#21262d",
+            linecolor="#30363d",
+        ),
+        yaxis=dict(
+            gridcolor="#21262d",
+            linecolor="#30363d",
+        ),
+    )
+    
+    return fig
 
 
 def load_clustering_results_for_unified(
@@ -88,19 +159,54 @@ def load_clustering_results_for_unified(
     feature_df = create_feature_matrix(site_results, extractor)
     
     # Perform clustering
-    analyzer = ClusteringAnalyzer(
-        method=clustering_config.get("method", "kmeans"),
-        n_clusters=clustering_config.get("n_clusters", 5),
-        normalization=clustering_config.get("normalization", "standard"),
-        dimension_reduction=clustering_config.get("dimension_reduction", "none"),
-        pca_n_components=clustering_config.get("pca_n_components", 3),
-    )
+    from src.analysis.clustering import NormalizationMethod, ClusteringMethod, DimensionReductionMethod
     
-    labels = analyzer.fit_predict(feature_df.values)
+    analyzer = ClusteringAnalyzer()
+    
+    # Set normalization method
+    norm_method = clustering_config.get("normalization", "standard")
+    if norm_method == "standard":
+        analyzer.normalization = NormalizationMethod.STANDARD
+    elif norm_method == "minmax":
+        analyzer.normalization = NormalizationMethod.MINMAX
+    elif norm_method == "robust":
+        analyzer.normalization = NormalizationMethod.ROBUST
+    
+    # Set clustering method
+    cluster_method = clustering_config.get("method", "kmeans")
+    if cluster_method == "kmeans":
+        analyzer.clustering = ClusteringMethod.KMEANS
+    elif cluster_method == "dbscan":
+        analyzer.clustering = ClusteringMethod.DBSCAN
+    elif cluster_method == "hierarchical":
+        analyzer.clustering = ClusteringMethod.HIERARCHICAL
+    
+    # Set dimension reduction
+    dim_reduction = clustering_config.get("dimension_reduction", "none")
+    if dim_reduction == "pca":
+        analyzer.dimension_reduction = DimensionReductionMethod.PCA
+    else:
+        analyzer.dimension_reduction = DimensionReductionMethod.NONE
+    
+    # Set parameters
+    analyzer.n_clusters = clustering_config.get("n_clusters", 5)
+    analyzer.dbscan_eps = clustering_config.get("dbscan_eps", 0.5)
+    analyzer.dbscan_min_samples = clustering_config.get("dbscan_min_samples", 3)
+    analyzer.hierarchical_linkage = clustering_config.get("hierarchical_linkage", "ward")
+    analyzer.pca_n_components = clustering_config.get("pca_n_components", 3)
+    
+    # Fit and transform
+    result_df, metadata = analyzer.fit_transform(feature_df)
+    labels = result_df["cluster"].values
     
     # Get coordinates
-    if analyzer.dimension_reduction == "pca" and hasattr(analyzer, "pca_"):
-        coordinates = analyzer.pca_.transform(feature_df.values)[:, :2]
+    if analyzer.dimension_reduction == DimensionReductionMethod.PCA:
+        # Extract PCA coordinates from result_df
+        pc_cols = [col for col in result_df.columns if col.startswith("PC")]
+        if len(pc_cols) >= 2:
+            coordinates = result_df[pc_cols[:2]].values
+        else:
+            coordinates = feature_df.values[:, :2]
     else:
         coordinates = feature_df.values[:, :2]
     
@@ -184,7 +290,7 @@ def create_unified_dashboard(
         suppress_callback_exceptions=True,
     )
     
-    # Custom CSS
+    # Custom CSS - GitHub-like UI
     app.index_string = '''
     <!DOCTYPE html>
     <html>
@@ -193,14 +299,14 @@ def create_unified_dashboard(
             <title>{%title%}</title>
             {%favicon%}
             {%css%}
-            <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif&display=swap" rel="stylesheet">
             <style>
                 body {
-                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+                    background: #0d1117;
                     min-height: 100vh;
                     margin: 0;
-                    font-family: 'Noto Sans JP', sans-serif;
-                    color: #eee;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                    color: #c9d1d9;
                 }
                 .container {
                     max-width: 1600px;
@@ -209,16 +315,68 @@ def create_unified_dashboard(
                 }
                 h1 {
                     text-align: center;
-                    background: linear-gradient(120deg, #FF6B6B, #4ECDC4, #45B7D1);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    font-size: 2.5em;
+                    color: #f0f6fc;
+                    font-size: 2em;
+                    font-weight: 600;
                     margin-bottom: 10px;
+                    border-bottom: 1px solid #21262d;
+                    padding-bottom: 10px;
                 }
                 .subtitle {
                     text-align: center;
-                    color: #888;
+                    color: #8b949e;
                     margin-bottom: 30px;
+                    font-size: 0.9em;
+                }
+                .sticky-header {
+                    position: sticky;
+                    top: 0;
+                    background: #0d1117;
+                    z-index: 100;
+                    padding: 10px 0;
+                    border-bottom: 1px solid #21262d;
+                    margin-bottom: 0;
+                }
+                .sticky-header .chart-container {
+                    margin-bottom: 0;
+                }
+                .chart-container .chart-title {
+                    position: sticky;
+                    top: 0;
+                    background: #161b22;
+                    z-index: 10;
+                    padding: 8px 16px;
+                    margin: 0;
+                }
+                .chart-container {
+                    margin-bottom: 20px;
+                    border: 1px solid #21262d;
+                    border-radius: 6px;
+                    background: #161b22;
+                    padding: 16px;
+                }
+                .chart-title {
+                    color: #f0f6fc;
+                    font-size: 1.1em;
+                    font-weight: 600;
+                    margin-bottom: 10px;
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid #21262d;
+                }
+                /* Slider Customization */
+                .rc-slider-track {
+                    background-color: #238636 !important;
+                }
+                .rc-slider-handle {
+                    border-color: #238636 !important;
+                    background-color: #238636 !important;
+                }
+                .rc-slider-rail {
+                    background-color: #21262d !important;
+                }
+                .rc-slider-mark-text {
+                    color: #8b949e !important;
+                    font-size: 0.8em;
                 }
             </style>
         </head>
@@ -233,14 +391,28 @@ def create_unified_dashboard(
     </html>
     '''
     
-    # Initial values
-    indicator_type_default = "mfa"
-    indicator_value_default = "D(0)"
+    # Initial values - create 3 charts for MFA, Lacunarity, and Percolation
+    # Note: indicator_value is not used for lacunarity and percolation (they show full curves)
+    # Set square chart size
+    square_chart_size = indicator_config.get("square_chart_size", 400)
+    indicator_config["square_chart_size"] = square_chart_size
+    indicator_config["chart_height"] = square_chart_size
     
-    # Create initial chart and gallery
-    initial_chart = create_horizontal_scrollable_chart(
-        all_results, indicator_type_default, indicator_value_default, indicator_config
+    mfa_chart = create_horizontal_scrollable_chart(
+        all_results, "mfa", "D(0)", indicator_config
     )
+    lacunarity_chart = create_horizontal_scrollable_chart(
+        all_results, "lacunarity", "", indicator_config
+    )
+    percolation_chart = create_horizontal_scrollable_chart(
+        all_results, "percolation", "", indicator_config
+    )
+    
+    # Create clustering chart if available
+    clustering_chart = None
+    if cluster_results is not None:
+        clustering_chart = _create_clustering_chart(cluster_results, indicator_config)
+    
     gallery_items = create_image_gallery(all_results, run_dirs, indicator_config)
     
     highlight_color = indicator_config.get("highlight_color", "rgba(255, 0, 0, 1.0)")
@@ -254,49 +426,81 @@ def create_unified_dashboard(
     
     zoom_threshold = cluster_config.get("zoom_threshold", 0.5)
     
-    # Build layout with tabs
+    # Build layout with tabs - GitHub-like UI
     app.layout = html.Div([
         html.Div([
-            html.H1("🏙️ Urban Structure Analysis - Unified View"),
-            html.P(f"Number of runs: {len(run_dirs)}", className="subtitle"),
+            # Sticky header section
+            html.Div([
+                html.H1("Urban Structure Analysis - Unified View"),
+                html.P(f"Number of runs: {len(run_dirs)}", className="subtitle"),
+                
+                # Resizable Layout Controls
+                html.Div([
+                    html.Div([
+                        html.Label("Gallery Width", style={"color": "#8b949e", "margin-right": "15px", "font-size": "0.9em"}),
+                        dcc.Slider(
+                            id="gallery-width-slider",
+                            min=10,
+                            max=70,
+                            step=5,
+                            value=25,
+                            marks={i: {'label': f'{i}%', 'style': {'color': '#8b949e'}} for i in range(10, 71, 10)},
+                        ),
+                    ], style={"flex": "1", "padding": "0 20px"}),
+                ], style={
+                    "display": "flex", 
+                    "align-items": "center", 
+                    "background": "#161b22", 
+                    "padding": "10px", 
+                    "border-radius": "6px",
+                    "margin": "0 20px 20px 20px",
+                    "border": "1px solid #21262d"
+                }),
             
             dcc.Tabs(
                 id="main-tabs",
                 value="indicator-tab",
                 children=[
                     dcc.Tab(
-                        label="📊 Indicator & Image",
+                            label="Indicator & Image",
                         value="indicator-tab",
                         style={
-                            "background": "#16213e",
-                            "color": "#eee",
-                            "border": "1px solid #4ECDC4",
+                                "background": "#161b22",
+                                "color": "#c9d1d9",
+                                "border": "1px solid #21262d",
+                                "border-bottom": "none",
                         },
                         selected_style={
-                            "background": "#1a1a2e",
-                            "color": "#4ECDC4",
-                            "border": "2px solid #4ECDC4",
+                                "background": "#0d1117",
+                                "color": "#f0f6fc",
+                                "border": "1px solid #21262d",
+                                "border-bottom": "1px solid #0d1117",
                         },
                     ),
                     dcc.Tab(
-                        label="🔗 Cluster & Image",
+                            label="Cluster & Image",
                         value="cluster-tab",
                         style={
-                            "background": "#16213e",
-                            "color": "#eee",
-                            "border": "1px solid #4ECDC4",
+                                "background": "#161b22",
+                                "color": "#c9d1d9",
+                                "border": "1px solid #21262d",
+                                "border-bottom": "none",
                         },
                         selected_style={
-                            "background": "#1a1a2e",
-                            "color": "#4ECDC4",
-                            "border": "2px solid #4ECDC4",
+                                "background": "#0d1117",
+                                "color": "#f0f6fc",
+                                "border": "1px solid #21262d",
+                                "border-bottom": "1px solid #0d1117",
                         },
                     ),
                 ],
                 style={
-                    "margin-bottom": "20px",
+                        "margin-bottom": "0",
+                        "border-bottom": "1px solid #21262d",
                 },
             ),
+                
+            ], className="sticky-header"),
             
             # Tab content
             html.Div(id="tab-content"),
@@ -310,18 +514,18 @@ def create_unified_dashboard(
                 "top": "50%",
                 "left": "50%",
                 "transform": "translate(-50%, -50%)",
-                "background": "#1a1a2e",
+                "background": "#161b22",
                 "padding": "20px",
-                "border": "2px solid #4ECDC4",
-                "border-radius": "10px",
+                "border": "1px solid #21262d",
+                "border-radius": "6px",
                 "z-index": "1000",
                 "display": "none",
                 "max-width": "500px",
-                "color": "#eee",
+                "color": "#c9d1d9",
             },
         ),
     ], style={
-        "background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+        "background": "#0d1117",
         "min-height": "100vh",
     })
     
@@ -329,233 +533,379 @@ def create_unified_dashboard(
     @app.callback(
         Output("tab-content", "children"),
         Input("main-tabs", "value"),
+        Input("gallery-width-slider", "value"),
     )
-    def update_tab_content(active_tab):
+    def update_tab_content(active_tab, gallery_width):
         """Update content based on active tab."""
         if active_tab == "indicator-tab":
-            # Indicator & Image View
+            # Indicator & Image View - Resizable side-by-side layout
+            chart_height = indicator_config.get("square_chart_size", 400)
+            
             return html.Div([
+                # Left side: Gallery
                 html.Div([
-                    html.Label("Indicator Type:", style={"color": "#eee", "margin-right": "10px"}),
-                    dcc.Dropdown(
-                        id="indicator-type-dropdown",
-                        options=[
-                            {"label": "MFA", "value": "mfa"},
-                            {"label": "Lacunarity", "value": "lacunarity"},
-                            {"label": "Percolation", "value": "percolation"},
-                        ],
-                        value=indicator_type_default,
-                        style={"width": "200px", "display": "inline-block"},
-                    ),
-                    html.Label("Indicator Value:", style={"color": "#eee", "margin-left": "20px", "margin-right": "10px"}),
-                    dcc.Dropdown(
-                        id="indicator-value-dropdown",
-                        options=[
-                            {"label": "D(0)", "value": "D(0)"},
-                            {"label": "D(1)", "value": "D(1)"},
-                            {"label": "D(2)", "value": "D(2)"},
-                        ],
-                        value=indicator_value_default,
-                        style={"width": "200px", "display": "inline-block"},
-                    ),
-                ], style={"margin-bottom": "20px", "padding": "20px", "background": "rgba(255,255,255,0.05)", "border-radius": "10px"}),
-                
-                # Chart area
-                html.Div([
-                    dcc.Graph(
-                        id="scrollable-chart",
-                        figure=initial_chart,
-                        style={"height": f"{indicator_config.get('chart_height', 400)}px"},
-                        config={"scrollZoom": True},
-                    ),
-                ], style={
-                    "width": "100%",
-                    "overflow-x": "auto",
-                    "border": "1px solid #ccc",
-                    "padding": "10px",
-                    "border-radius": "10px",
-                    "background": "#16213e",
+                    html.H3("Measurement Points Gallery", style={
+                        "color": "#f0f6fc",
+                        "font-size": "1.1em",
+                        "font-weight": "600",
+                        "margin-bottom": "16px",
+                        "padding-bottom": "8px",
+                        "border-bottom": "1px solid #21262d",
                 }),
-                
-                # Image gallery
-                html.Div([
-                    html.H3("Measurement Points Gallery", style={"color": "#4ECDC4"}),
                     html.Div(
                         id="image-gallery",
                         children=gallery_items,
                         style={
                             "display": "grid",
                             "grid-template-columns": "repeat(auto-fill, minmax(200px, 1fr))",
-                            "gap": "10px",
-                            "padding": "20px",
+                            "gap": "16px",
+                            "padding": "20px 0",
+                            "overflow-y": "auto",
+                            "max-height": "calc(100vh - 200px)",
                         },
                     ),
-                ]),
-            ])
+                    # Hidden div for scroll target
+                    html.Div(id="scroll-target", style={"display": "none"}),
+                ], style={
+                    "width": f"{gallery_width}%",
+                    "float": "left",
+                    "padding": "20px",
+                    "box-sizing": "border-box",
+                }),
+                
+                # Right side: Charts in vertical column
+                html.Div([
+                    # MFA Chart - Square and static
+                    html.Div([
+                        html.Div("MFA - D(q)", className="chart-title", style={"font-size": "0.9em"}),
+                        html.Div([
+                            dcc.Graph(
+                                id="mfa-chart-sticky",
+                                figure=mfa_chart,
+                                style={
+                                    "height": "100%",
+                                    "width": "100%",
+                                    "margin": "0 auto",
+                                },
+                                config={
+                                    "staticPlot": False,  # Enable interaction for clicking
+                                    "displayModeBar": False,
+                                },
+                    ),
+                        ], style={
+                            "width": "100%",
+                            "height": f"{chart_height}px",
+                            "min-height": f"{chart_height}px",
+                            "margin": "0 auto",
+                        }),
+                    ], className="chart-container", style={
+                        "margin-bottom": "20px",
+                    }),
+                    
+                    # Lacunarity Chart - Square and static
+                    html.Div([
+                        html.Div("Lacunarity - Λ(r)", className="chart-title", style={"font-size": "0.9em"}),
+                        html.Div([
+                            dcc.Graph(
+                                id="lacunarity-chart-sticky",
+                                figure=lacunarity_chart,
+                                style={
+                                    "height": "100%",
+                                    "width": "100%",
+                                    "margin": "0 auto",
+                                },
+                                config={
+                                    "staticPlot": False,  # Enable interaction for clicking
+                                    "displayModeBar": False,
+                                },
+                            ),
+                        ], style={
+                            "width": "100%",
+                            "height": f"{chart_height}px",
+                            "min-height": f"{chart_height}px",
+                            "margin": "0 auto",
+                        }),
+                    ], className="chart-container", style={
+                        "margin-bottom": "20px",
+                    }),
+                    
+                    # Percolation Chart - Square and static
+                    html.Div([
+                        html.Div("Percolation - Giant Component Fraction", className="chart-title", style={"font-size": "0.9em"}),
+                        html.Div([
+                            dcc.Graph(
+                                id="percolation-chart-sticky",
+                                figure=percolation_chart,
+                                style={
+                                    "height": "100%",
+                                    "width": "100%",
+                                    "margin": "0 auto",
+                                },
+                                config={
+                                    "staticPlot": False,  # Enable interaction for clicking
+                                    "displayModeBar": False,
+                                },
+                            ),
+                        ], style={
+                            "width": "100%",
+                            "height": f"{chart_height}px",
+                            "min-height": f"{chart_height}px",
+                            "margin": "0 auto",
+                        }),
+                    ], className="chart-container", style={
+                        "margin-bottom": "20px",
+                    }),
+                    
+                    # Clustering Chart (if available) - Square and static
+                    (html.Div([
+                        html.Div("Clustering - 2D Projection", className="chart-title", style={"font-size": "0.9em"}),
+                        html.Div([
+                            dcc.Graph(
+                                id="clustering-chart-sticky",
+                                figure=clustering_chart,
+                                style={
+                                    "height": "100%",
+                                    "width": "100%",
+                                    "margin": "0 auto",
+                                },
+                                config={
+                                    "staticPlot": False,  # Enable interaction for clicking
+                                    "displayModeBar": False,
+                                },
+                            ),
+                        ], style={
+                            "width": "100%",
+                            "height": f"{chart_height}px",
+                            "min-height": f"{chart_height}px",
+                            "margin": "0 auto",
+                        }),
+                    ], className="chart-container") if clustering_chart is not None else html.Div()),
+                ], style={
+                    "width": f"{100 - gallery_width}%",
+                    "float": "right",
+                    "padding": "20px",
+                    "box-sizing": "border-box",
+                    "position": "sticky",
+                    "top": "100px",
+                    "max-height": "calc(100vh - 100px)",
+                    "overflow-y": "auto",
+                }),
+            ], style={
+                "clear": "both",
+                "display": "flex",
+            })
         else:
-            # Cluster & Image View
-            if cluster_results is None or cluster_fig is None:
+            # Cluster & Image View - Resizable side-by-side layout
+            if cluster_results is None:
                 return html.Div([
-                    html.H3("Cluster & Image Correspondence", style={"color": "#4ECDC4"}),
+                    html.H3("Cluster & Image Correspondence", style={
+                        "color": "#f0f6fc",
+                        "font-size": "1.1em",
+                        "font-weight": "600",
+                        "margin-bottom": "16px",
+                    }),
                     html.P(
                         "クラスターと画像対応ビューを使用するには、最低2つ以上のrunディレクトリが必要です。",
-                        style={"color": "#888", "padding": "20px"},
+                        style={"color": "#8b949e", "padding": "20px"},
                     ),
-                ])
+                ], className="chart-container")
             else:
+                # Create static cluster gallery
+                static_gallery = create_static_cluster_gallery(
+                    cluster_results, cluster_run_dirs, cluster_config
+                )
+                
+                # Create gallery for cluster view (same as indicator view)
+                cluster_gallery_items = create_image_gallery(all_results, run_dirs, indicator_config)
+                
                 return html.Div([
-                    # Cluster plot
-                    dcc.Graph(
-                        id="cluster-plot",
-                        figure=cluster_fig,
-                        style={"height": f"{cluster_config.get('plot_height', 800)}px"},
-                        config={"scrollZoom": True, "doubleClick": "reset"},
-                    ),
+                    # Left side: Gallery
+                    html.Div([
+                        html.H3("Measurement Points Gallery", style={
+                            "color": "#f0f6fc",
+                            "font-size": "1.1em",
+                            "font-weight": "600",
+                            "margin-bottom": "16px",
+                            "padding-bottom": "8px",
+                            "border-bottom": "1px solid #21262d",
+                        }),
+                        html.Div(
+                            id="cluster-image-gallery",
+                            children=cluster_gallery_items,
+                            style={
+                                "display": "grid",
+                                "grid-template-columns": "repeat(auto-fill, minmax(200px, 1fr))",
+                                "gap": "16px",
+                                "padding": "20px 0",
+                                "overflow-y": "auto",
+                                "max-height": "calc(100vh - 200px)",
+                            },
+                        ),
+                    ], style={
+                        "width": f"{gallery_width}%",
+                        "float": "left",
+                        "padding": "20px",
+                        "box-sizing": "border-box",
+                    }),
                     
-                    # Zoom level display
-                    html.Div(
-                        id="zoom-level-display",
-                        style={"margin": "10px", "color": "#eee", "text-align": "center"},
-                    ),
-                    
-                    # Selected point details
-                    html.Div(
-                        id="selected-point-details",
-                        style={"margin": "20px", "color": "#eee"},
-                    ),
-                ])
-    
-    # Callback for indicator chart update
-    @app.callback(
-        Output("scrollable-chart", "figure"),
-        Input("indicator-type-dropdown", "value"),
-        Input("indicator-value-dropdown", "value"),
-    )
-    def update_indicator_chart(indicator_type, indicator_value):
-        """Update indicator chart when dropdowns change."""
-        if indicator_type is None:
-            indicator_type = indicator_type_default
-        if indicator_value is None:
-            indicator_value = indicator_value_default
-        
-        return create_horizontal_scrollable_chart(
-            all_results, indicator_type, indicator_value, indicator_config
-        )
+                    # Right side: Cluster Visualization
+                    html.Div([
+                        html.Div("Cluster Visualization", className="chart-title", style={
+                            "font-size": "1.1em",
+                            "margin-bottom": "10px",
+                        }),
+                        html.Div(
+                            static_gallery,
+                            style={
+                                "overflow": "auto",
+                                "background": "#ffffff",
+                                "border-radius": "6px",
+                                "border": "1px solid #21262d",
+                            }
+                        ),
+                    ], style={
+                        "width": f"{100 - gallery_width}%",
+                        "float": "right",
+                        "padding": "20px",
+                        "box-sizing": "border-box",
+                        "position": "sticky",
+                        "top": "100px",
+                        "max-height": "calc(100vh - 100px)",
+                        "overflow-y": "auto",
+                    }),
+                ], style={
+                    "clear": "both",
+                    "display": "flex",
+                })
     
     # Callback: Image click -> Chart highlight (indicator view)
     @app.callback(
-        Output("scrollable-chart", "figure", allow_duplicate=True),
-        Output("value-popup", "children"),
-        Output("value-popup", "style"),
+        Output("mfa-chart-sticky", "figure", allow_duplicate=True),
+        Output("lacunarity-chart-sticky", "figure", allow_duplicate=True),
+        Output("percolation-chart-sticky", "figure", allow_duplicate=True),
         Input({"type": "gallery-image", "index": dash.dependencies.ALL, "img_type": dash.dependencies.ALL}, "n_clicks"),
-        State("scrollable-chart", "figure"),
-        State("indicator-type-dropdown", "value"),
-        State("indicator-value-dropdown", "value"),
+        State("mfa-chart-sticky", "figure"),
+        State("lacunarity-chart-sticky", "figure"),
+        State("percolation-chart-sticky", "figure"),
         prevent_initial_call=True,
     )
-    def highlight_chart_on_image_click(n_clicks_list, current_fig, indicator_type, indicator_value):
-        """Highlight chart when image is clicked."""
+    def highlight_charts_on_image_click(n_clicks_list, mfa_fig, lacunarity_fig, percolation_fig):
+        """Highlight charts when image is clicked."""
         ctx = dash.callback_context
         if not ctx.triggered:
-            return dash.no_update, dash.no_update, {"display": "none"}
+            return dash.no_update, dash.no_update, dash.no_update
         
         triggered_id = ctx.triggered[0]["prop_id"]
         if not triggered_id or "gallery-image" not in triggered_id:
-            return dash.no_update, dash.no_update, {"display": "none"}
+            return dash.no_update, dash.no_update, dash.no_update
         
         try:
             prop_id = json.loads(triggered_id.split(".")[0])
             point_idx = prop_id.get("index", -1)
             if point_idx < 0 or point_idx >= len(all_results):
-                return dash.no_update, dash.no_update, {"display": "none"}
+                return dash.no_update, dash.no_update, dash.no_update
         except Exception:
-            return dash.no_update, dash.no_update, {"display": "none"}
+            return dash.no_update, dash.no_update, dash.no_update
         
-        updated_fig = update_chart_highlight(
-            go.Figure(current_fig), point_idx, highlight_color
+        # Update all charts with highlight
+        highlight_color = indicator_config.get("highlight_color", "rgba(255, 0, 0, 1.0)")
+        
+        updated_mfa = update_chart_highlight(
+            go.Figure(mfa_fig), point_idx, highlight_color
+        )
+        updated_lacunarity = update_chart_highlight(
+            go.Figure(lacunarity_fig), point_idx, highlight_color
+        )
+        updated_percolation = update_chart_highlight(
+            go.Figure(percolation_fig), point_idx, highlight_color
         )
         
-        point_data = all_results[point_idx]
-        popup_content = create_value_popup(point_data, indicator_type or indicator_type_default, indicator_value or indicator_value_default)
-        popup_style = {
-            "position": "fixed",
-            "top": "50%",
-            "left": "50%",
-            "transform": "translate(-50%, -50%)",
-            "background": "#1a1a2e",
-            "padding": "20px",
-            "border": "2px solid #4ECDC4",
-            "border-radius": "10px",
-            "z-index": "1000",
-            "display": "block",
-            "max-width": "500px",
-            "color": "#eee",
-        }
-        
-        return updated_fig, popup_content, popup_style
+        return updated_mfa, updated_lacunarity, updated_percolation
     
-    # Callback: Close popup
+    # Callback: Chart line click -> Image highlight and scroll (indicator view)
     @app.callback(
-        Output("value-popup", "style", allow_duplicate=True),
-        Input("value-popup", "n_clicks"),
+        Output("image-gallery", "children", allow_duplicate=True),
+        Output("scroll-target", "children", allow_duplicate=True),
+        Input("mfa-chart-sticky", "clickData"),
+        Input("lacunarity-chart-sticky", "clickData"),
+        Input("percolation-chart-sticky", "clickData"),
+        State("image-gallery", "children"),
         prevent_initial_call=True,
     )
-    def close_popup(n_clicks):
-        """Close popup when clicked."""
-        return {"display": "none"}
-    
-    # Callback: Update cluster display by zoom (cluster view)
-    if cluster_results is not None:
-        @app.callback(
-            Output("cluster-plot", "figure"),
-            Output("zoom-level-display", "children"),
-            Input("cluster-plot", "relayoutData"),
-            State("cluster-plot", "figure"),
-            prevent_initial_call=True,
-        )
-        def update_display_by_zoom(relayout_data, current_fig):
-            """Update display based on zoom level."""
-            if relayout_data is None:
-                return dash.no_update, "Zoom level: Default"
-            
-            zoom_level = _calculate_zoom_level(relayout_data)
-            display_mode = "images" if zoom_level > zoom_threshold else "points"
-            
-            updated_fig = update_cluster_figure_display(
-                go.Figure(current_fig),
-                cluster_results,
-                cluster_run_dirs,
-                display_mode,
-                zoom_level,
-                cluster_config,
-            )
-            
-            zoom_info = f"Zoom level: {zoom_level:.2f} | Display: {display_mode}"
-            return updated_fig, zoom_info
+    def highlight_image_on_chart_click(mfa_click, lacunarity_click, percolation_click, current_gallery):
+        """Highlight image and scroll to it when chart line is clicked."""
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return dash.no_update, dash.no_update
         
-        # Callback: Display point details on click (cluster view)
-        @app.callback(
-            Output("selected-point-details", "children"),
-            Input("cluster-plot", "clickData"),
-        )
-        def display_point_details(click_data):
-            """Display details of clicked point."""
-            if click_data is None:
-                return html.Div("Click on a point to see details", style={"color": "#888"})
+        # Get click data from any chart
+        click_data = mfa_click or lacunarity_click or percolation_click
+        if not click_data or "points" not in click_data:
+            return dash.no_update, dash.no_update
+        
+        try:
+            # Get point index from clicked trace
+            point_data = click_data["points"][0]
+            # Try to get customdata first (point index), then fallback to curveNumber (trace index)
+            point_idx = -1
+            if "customdata" in point_data:
+                customdata = point_data["customdata"]
+                if isinstance(customdata, list) and len(customdata) > 0:
+                    point_idx = customdata[0]
+                elif isinstance(customdata, (int, float)):
+                    point_idx = int(customdata)
+            elif "curveNumber" in point_data:
+                # Fallback to curveNumber (trace index)
+                point_idx = point_data["curveNumber"]
             
-            try:
-                point_idx = click_data["points"][0]["customdata"]
-                if isinstance(point_idx, list):
-                    point_idx = point_idx[0]
-                
-                if point_idx >= len(cluster_run_dirs):
-                    return html.Div("Invalid point index", style={"color": "#888"})
-                
-                results_dir = cluster_run_dirs[point_idx]
-                results = load_results(results_dir)
-                
-                return create_point_detail_view(results, results_dir, point_idx)
-            except Exception as e:
-                return html.Div(f"Error: {str(e)}", style={"color": "#888"})
+            if point_idx < 0 or point_idx >= len(all_results):
+                return dash.no_update, dash.no_update
+            
+            # Recreate gallery with highlight and scroll target
+            highlight_color = indicator_config.get("highlight_color", "rgba(255, 0, 0, 1.0)")
+            gallery_items = create_image_gallery(all_results, run_dirs, indicator_config)
+            
+            # Add highlight style and ID to the clicked image for scrolling
+            if point_idx < len(gallery_items):
+                # Find the image element in the gallery item
+                gallery_item = gallery_items[point_idx]
+                if isinstance(gallery_item, html.Div):
+                    # Add ID for scrolling
+                    gallery_item.id = f"gallery-item-{point_idx}"
+                    if len(gallery_item.children) > 0:
+                        img_element = gallery_item.children[0]
+                        if isinstance(img_element, html.Img):
+                            # Update image style with highlight
+                            current_style = dict(img_element.style) if img_element.style else {}
+                            current_style["border"] = f"3px solid {highlight_color}"
+                            current_style["box-shadow"] = f"0 0 10px {highlight_color}"
+                            current_style["transform"] = "scale(1.05)"
+                            img_element.style = current_style
+            
+            # Return gallery items and scroll target ID to trigger scroll
+            return gallery_items, point_idx
+        except Exception as e:
+            print(f"Error highlighting image: {e}")
+            return dash.no_update, dash.no_update
+    
+    # Clientside callback to scroll to highlighted image
+    app.clientside_callback(
+        """
+        function(scroll_target) {
+            if (scroll_target !== null && scroll_target !== undefined) {
+                const element = document.getElementById('gallery-item-' + scroll_target);
+                if (element) {
+                    setTimeout(function() {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
+                }
+            }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output("image-gallery", "style", allow_duplicate=True),
+        Input("scroll-target", "children"),
+        prevent_initial_call=True,
+    )
     
     return app

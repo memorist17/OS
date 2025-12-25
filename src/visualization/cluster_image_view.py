@@ -26,15 +26,47 @@ def _encode_image(image_path: Path) -> str:
 def _get_representative_image_path(results_dir: Path) -> Path | None:
     """Get representative image path.
     
-    Priority: thumbnail.png > buildings_raster.png > network_image.png
+    Priority: combined_visualization.png > thumbnail.png > other PNG files
     """
-    # Check for thumbnail
+    # Try to get data directory from config
+    config_path = results_dir / "config_snapshot.yaml"
+    data_dir = None
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+                data_dir = Path(config.get("data_dir", ""))
+        except Exception:
+            pass
+    
+    # Check data directory first
+    if data_dir and data_dir.exists():
+        # Priority: combined_visualization.png
+        combined_path = data_dir / "combined_visualization.png"
+        if combined_path.exists():
+            return combined_path
+        
+        # Check for other PNG files
+        for png_file in data_dir.glob("*.png"):
+            if "combined" in png_file.name.lower() or "visualization" in png_file.name.lower():
+                return png_file
+        
+        # Any PNG file
+        png_files = list(data_dir.glob("*.png"))
+        if png_files:
+            return png_files[0]
+    
+    # Check results directory
     thumbnail_path = results_dir / "thumbnail.png"
     if thumbnail_path.exists():
         return thumbnail_path
     
-    # Check for buildings raster (would need conversion to image)
-    # For now, return None if no thumbnail exists
+    # Check for any PNG in results directory
+    png_files = list(results_dir.glob("*.png"))
+    if png_files:
+        return png_files[0]
+    
     return None
 
 
@@ -150,7 +182,7 @@ def _add_point_image(
             sizey=image_size,
             xanchor="center",
             yanchor="middle",
-            opacity=0.7,
+            opacity=1.0,  # Full opacity for better visibility
             layer="above",
         )
     )
@@ -214,30 +246,26 @@ def create_interactive_cluster_figure(
     
     fig = go.Figure()
     
-    # Plot each cluster
+    # Image size for all points
+    point_image_size = config.get("point_image_size", 15.0)
+    
+    # Plot each cluster with images
     for cluster_id in range(n_clusters):
         mask = labels == cluster_id
         cluster_coords = coordinates[mask]
         cluster_indices = np.where(mask)[0]
         
-        # Calculate cluster center
-        if "cluster_centers" in cluster_results:
-            center = np.array(cluster_results["cluster_centers"][cluster_id])
-        else:
-            center = cluster_coords.mean(axis=0)
-        
-        # Add representative image at cluster center
-        if len(cluster_indices) > 0:
-            representative_idx = cluster_indices[0]
-            _add_representative_image(
+        # Add images for all points in this cluster
+        for idx, coord in zip(cluster_indices, cluster_coords):
+            _add_point_image(
                 fig,
-                results_dirs[representative_idx],
-                center,
-                cluster_id,
-                representative_image_size,
+                results_dirs[idx],
+                coord,
+                int(idx),
+                point_image_size,
             )
         
-        # Add points
+        # Add invisible points for hover interaction (behind images)
         fig.add_trace(go.Scatter(
             x=cluster_coords[:, 0],
             y=cluster_coords[:, 1],
@@ -246,7 +274,7 @@ def create_interactive_cluster_figure(
             marker=dict(
                 size=point_size,
                 color=_get_cluster_color(cluster_id),
-                opacity=0.7,
+                opacity=0.0,  # Invisible, only for hover interaction
             ),
             customdata=cluster_indices.tolist(),
             hovertemplate="<b>Point %{customdata}</b><br>" +
@@ -254,35 +282,28 @@ def create_interactive_cluster_figure(
                          "Position: (%{x:.2f}, %{y:.2f})<extra></extra>",
         ))
     
-    # Add cluster centers if available
-    if "cluster_centers" in cluster_results:
-        centers = np.array(cluster_results["cluster_centers"])
-        fig.add_trace(go.Scatter(
-            x=centers[:, 0],
-            y=centers[:, 1],
-            mode="markers",
-            name="Centers",
-            marker=dict(
-                size=15,
-                symbol="x",
-                color="red",
-                line=dict(width=2, color="red"),
-            ),
-            hovertemplate="<b>Cluster Center</b><br>" +
-                         "Position: (%{x:.2f}, %{y:.2f})<extra></extra>",
-        ))
-    
     fig.update_layout(
-        title="Interactive Cluster Visualization",
+        title="",
         xaxis_title="Dimension 1",
         yaxis_title="Dimension 2",
         height=plot_height,
         hovermode="closest",
         clickmode="event+select",
-        template="plotly_dark",
-        paper_bgcolor="#1a1a2e",
-        plot_bgcolor="#16213e",
-        font=dict(family="Noto Sans JP, sans-serif", color="#eee"),
+        template="plotly_white",  # White background like the image
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif", color="#000000"),
+        xaxis=dict(
+            gridcolor="#e0e0e0",
+            linecolor="#cccccc",
+            showgrid=True,
+        ),
+        yaxis=dict(
+            gridcolor="#e0e0e0",
+            linecolor="#cccccc",
+            showgrid=True,
+        ),
+        showlegend=False,  # Hide legend for cleaner look
     )
     
     return fig
@@ -371,6 +392,92 @@ def update_cluster_figure_display(
             ))
     
     return fig
+
+
+def create_static_cluster_gallery(
+    cluster_results: dict[str, Any],
+    results_dirs: list[Path],
+    config: dict[str, Any] | None = None,
+) -> html.Div:
+    """Create static cluster gallery with images positioned based on coordinates.
+    
+    Args:
+        cluster_results: Cluster analysis results with keys:
+            - coordinates: 2D array (n_points, 2)
+            - labels: Cluster labels array (n_points,)
+        results_dirs: List of results directories
+        config: Configuration dictionary
+    
+    Returns:
+        HTML Div with absolutely positioned images
+    """
+    if config is None:
+        config = {}
+    
+    coordinates = np.array(cluster_results["coordinates"])
+    labels = np.array(cluster_results["labels"])
+    
+    # Normalize coordinates to pixel positions
+    x_coords = coordinates[:, 0]
+    y_coords = coordinates[:, 1]
+    
+    x_min, x_max = x_coords.min(), x_coords.max()
+    y_min, y_max = y_coords.min(), y_coords.max()
+    
+    x_range = x_max - x_min if x_max != x_min else 1.0
+    y_range = y_max - y_min if y_max != y_min else 1.0
+    
+    # Image size in pixels
+    image_size = config.get("static_image_size", 60)
+    
+    # Calculate container size (add padding for images)
+    container_width = max(1200, int(x_range * 10) + image_size * 2)
+    container_height = max(800, int(y_range * 10) + image_size * 2)
+    
+    # Normalize to pixel positions
+    x_pixels = ((x_coords - x_min) / x_range) * (container_width - image_size * 2) + image_size
+    y_pixels = ((y_coords - y_min) / y_range) * (container_height - image_size * 2) + image_size
+    
+    # Create image elements
+    image_elements = []
+    for idx, (x_px, y_px) in enumerate(zip(x_pixels, y_pixels)):
+        image_path = _get_representative_image_path(results_dirs[idx])
+        if image_path is None:
+            continue
+        
+        image_base64 = _encode_image(image_path)
+        if not image_base64:
+            continue
+        
+        image_elements.append(
+            html.Img(
+                src=f"data:image/png;base64,{image_base64}",
+                style={
+                    "position": "absolute",
+                    "left": f"{x_px}px",
+                    "top": f"{y_px}px",
+                    "width": f"{image_size}px",
+                    "height": f"{image_size}px",
+                    "object-fit": "cover",
+                    "border": "1px solid #e0e0e0",
+                    "border-radius": "2px",
+                },
+            )
+        )
+    
+    return html.Div(
+        image_elements,
+        style={
+            "position": "relative",
+            "width": f"{container_width}px",
+            "height": f"{container_height}px",
+            "min-width": "100%",
+            "min-height": "100vh",
+            "background": "#ffffff",
+            "overflow": "auto",
+            "margin": "0 auto",
+        },
+    )
 
 
 def create_point_detail_view(
