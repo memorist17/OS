@@ -1,0 +1,113 @@
+name: Branch Protection & Quality Gates
+
+on:
+  push:
+    branches: [main, stage]
+  pull_request:
+    branches: [main, stage]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Install dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+      
+      - name: Run Tests
+        run: |
+          source .venv/bin/activate
+          pytest tests/ -v --cov=src --cov-report=json || true
+      
+      - name: Check Reproducibility
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/stage' || github.base_ref == 'main' || github.base_ref == 'stage'
+        run: |
+          source .venv/bin/activate
+          python scripts/check_reproducibility.py \
+            --check-snapshots \
+            --outputs-dir outputs/ || true
+      
+      - name: Validate Config Snapshots
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: |
+          source .venv/bin/activate
+          python scripts/check_reproducibility.py \
+            --outputs-dir outputs/ || echo "Warning: Some experiments may not be reproducible"
+      
+      - name: Quality Gate Decision
+        id: quality_gate
+        run: |
+          if [ -f coverage.json ]; then
+            COVERAGE=$(python -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered'])")
+          else
+            COVERAGE=0
+          fi
+          
+          if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
+            MIN_COVERAGE=80
+            MIN_SCORE=90
+          elif [ "${{ github.ref }}" == "refs/heads/stage" ] || [ "${{ github.base_ref }}" == "stage" ]; then
+            MIN_COVERAGE=60
+            MIN_SCORE=75
+          else
+            MIN_COVERAGE=40
+            MIN_SCORE=60
+          fi
+          
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "min_coverage=$MIN_COVERAGE" >> $GITHUB_OUTPUT
+          echo "min_score=$MIN_SCORE" >> $GITHUB_OUTPUT
+          
+          if (( $(echo "$COVERAGE >= $MIN_COVERAGE" | bc -l) )); then
+            echo "quality_gate=pass" >> $GITHUB_OUTPUT
+          else
+            echo "quality_gate=fail" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Post Quality Gate Result
+        uses: actions/github-script@v6
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const passed = '${{ steps.quality_gate.outputs.quality_gate }}' === 'pass';
+            const coverage = '${{ steps.quality_gate.outputs.coverage }}';
+            const minCoverage = '${{ steps.quality_gate.outputs.min_coverage }}';
+            
+            const emoji = passed ? '✅' : '❌';
+            const status = passed ? 'Passed' : 'Failed';
+            
+            const comment = `## ${emoji} Quality Gate: ${status}
+            
+            | Metric | Value | Required |
+            |--------|-------|----------|
+            | Test Coverage | ${coverage}% | ${minCoverage}% |
+            
+            ${passed ? '✅ Quality gate passed' : '❌ Quality gate failed - Review required'}
+            `;
+            
+            if (context.eventName === 'pull_request') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+

@@ -127,10 +127,8 @@ class OvertureFetcher:
             filename=true,
             hive_partitioning=1
         )
-        WHERE bbox.xmin >= {min_lon}
-          AND bbox.xmax <= {max_lon}
-          AND bbox.ymin >= {min_lat}
-          AND bbox.ymax <= {max_lat}
+        WHERE (bbox.xmin <= {max_lon} AND bbox.xmax >= {min_lon})
+          AND (bbox.ymin <= {max_lat} AND bbox.ymax >= {min_lat})
           AND subtype = 'road'
         """
 
