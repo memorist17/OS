@@ -1,0 +1,101 @@
+name: "02 詳細設計 (Copilot Coding Agent / OS)"
+description: "要件を踏まえた詳細設計を Copilot によって作成する（OS 向け）"
+title: "[詳細設計] <機能名を記入>"
+labels: ["design", "autogen"]
+assignees: ["copilot"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 使い方
+        1) 下で **project_identifier** を入力して Issue を作成
+        2) 作成後、**Copilot が自動で担当者に割り当て** られます
+        3) Copilot が設計ファイル群を生成し、PR を作成します
+
+        - 要件定義は `docs/{project_identifier}/requirements.md` を前提とします。
+        - コードは OS の構造（configs/src/scripts/viewers/tests/outputs）を前提に設計してください。
+
+  - type: input
+    id: project_identifier
+    attributes:
+      label: プロジェクト識別子（必須・英数字/ハイフン）
+      description: "例: `mfa-spectrum-viewer` → `docs/mfa-spectrum-viewer/` 配下に設計一式を生成"
+      placeholder: 例）mfa-spectrum-viewer
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 任意の補足（関連URL・制約など）
+      placeholder: 関連 Issue/PR、解析対象都市、計算資源の制約 等
+    validations:
+      required: false
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "⛳ エージェント向け明示指示"
+      description: "この内容はIssue本文に含まれます（必要に応じて編集可）。"
+      render: markdown
+      value: |
+        ---
+        ### ⛳ エージェント向け明示指示（OS 詳細設計）
+
+        入力 `project_identifier` を読み取り、**OS リポジトリの構造に即した詳細設計**を生成し、PR に含めてください。
+        既存がある場合は差分更新、無ければ新規作成とします。
+
+        #### 生成物（共通）
+
+        すべて `docs/{project_identifier}/design/` 配下に生成してください。
+
+        - `README.md`：全体目次・コンポーネント一覧（acquisition / preprocessing / analysis / visualization）
+        - `system-architecture.md`：
+          - 全体アーキテクチャ（文章）
+          - `configs/ → scripts/ → src/analysis/* → outputs/ → viewers/` のデータフローを説明
+        - `diagrams/system-architecture.mmd`：
+          - Mermaid で C4 Container 風の構造図
+        - `modules-and-packages.md`：
+          - `src/acquisition/*`, `src/preprocessing/*`, `src/analysis/*`, `src/visualization/*`, `scripts/*.py`, `viewers/*.py` の責務
+        - `nonfunctional.md`：
+          - 非機能要件を ISO/IEC 25010 の観点で整理（性能・信頼性・可用性など）
+          - 「実行時間」「メモリ」「再現性」「ロギング」「エラー時の挙動」を数値で記述
+        - `traceability.md`：
+          - 要件 → 設計 → テスト (`tests/`) の対応表
+        - `data-flow.md`：
+          - `data/{site_id}/*` と `outputs/{run_id}/*` のファイル構造とライフサイクル
+        - `cli-design.md`：
+          - `scripts/run_acquisition.py`, `scripts/run_analysis.py`, `scripts/run_dashboard.py` に必要な引数・オプションと挙動
+        - `config-design.md`：
+          - `configs/default.yaml` に追加すべき項目・セクション案
+          - 「ハードコード禁止」「config-first」を満たすための方針
+
+        #### 分析指標・数理仕様
+
+        以下を必要に応じて `metrics.md` としてまとめてください。
+
+        - 多重フラクタル解析（MFA）：使用している式・パラメータ（q 範囲、box size、grid shift）を数式レベルで記述
+        - ラクナリティ：どの定義・実装（integral image 等）か、スケールサンプリング方法
+        - パーコレーション：距離閾値、連結成分の定義、臨界点の求め方
+
+        数式は、今後の論文化・再実装に耐えられる精度で書いてください。
+
+        #### OS / Iwata Rules への準拠
+
+        - すべてのパラメータは **config-first** で `configs/*.yaml` に集約される前提で設計してください。
+        - コードの配置は以下のみを想定してください：
+          - 新規ロジック: `src/**`
+          - CLI: `scripts/**`
+          - 可視化: `viewers/**`
+          - テスト: `tests/**`
+        - uv / Docker 前提：
+          - 実行例は `uv run scripts/run_*.py` を前提にしたコマンドを `cli-design.md` に記載してください。
+        - 将来の Dash viewer 更新に備え、グラフに必要なメタデータ（run_id, timestamp, config snapshot パス）も設計に含めてください。
+
+        #### PR 方針
+
+        - 生成/更新ファイル一覧と、元の `requirements.md` へのトレースを PR 説明欄に日本語で記載してください。
+        - 破壊的なコード変更（既存 src/ のロジック変更）はこの Issue では行わず、別途「実装 Issue」で扱う前提で設計だけ提示してください。
+    validations:
+      required: false

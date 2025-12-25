@@ -37,6 +37,40 @@ analysis:
     d_min: 1
     d_max: 100
     d_steps: 50
+    distance_type: "shortest_path"  # "edge" (fast) or "shortest_path" (accurate)
+    node_filter: null               # null for all nodes, "building" for buildings only
+
+  path_diversity:
+    enabled: false                  # Separate from percolation analysis
+    max_paths: 5
+    length_tolerance: 1.5
+    sample_pairs: 1000              # null for all pairs (expensive)
+
+  # クラスタリング設定
+  clustering:
+    # 特徴抽出パラメータ
+    feature_extraction:
+      mfa_q_values: [0, 1, 2]           # 抽出する一般化次元 D(q)
+      lacunarity_scales: [4, 16, 64]    # ラクナリティを抽出するスケール
+      percolation_fractions: [0.1, 0.5, 0.9]  # 臨界閾値の計算に使う分率
+    
+    # 正規化方法: standard (Z-score), minmax, robust
+    normalization: "standard"
+    
+    # クラスタリング方法: kmeans, dbscan, hierarchical
+    method: "kmeans"
+    n_clusters: 5
+    
+    # DBSCANパラメータ
+    dbscan_eps: 0.5
+    dbscan_min_samples: 3
+    
+    # 階層的クラスタリングパラメータ
+    hierarchical_linkage: "ward"  # ward, complete, average, single
+    
+    # 次元削減: pca, none
+    dimension_reduction: "none"
+    pca_n_components: 3           # int: 成分数, float: 説明分散率
 
 # ===== Execution =====
 execution:

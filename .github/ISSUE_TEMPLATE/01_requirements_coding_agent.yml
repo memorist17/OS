@@ -1,0 +1,110 @@
+name: "01 要件定義 (Copilot Coding Agent / OS)"
+
+description: "OpenSparsity / Structure Analysis System 向けの要件定義を Copilot に展開させる（この Issue では要件定義のみ）"
+
+title: "[要件定義] <機能名を記入>"
+
+labels: ["enhancement", "autogen", "requirements"]
+
+assignees: ["copilot"]
+
+body:
+  - type: input
+    id: project_identifier
+    attributes:
+      label: プロジェクト名・機能名・設計名（必須・英数字/ハイフンのみ）
+      description: |
+        この値を元に `docs/{project_identifier}/requirements.md` として要件・設計ファイルが作成されます。
+        例: `mfa-spectrum-viewer` → `docs/mfa-spectrum-viewer/requirements.md`
+        OS リポジトリの構造（configs/src/scripts/viewers/outputs）を前提にしてください。
+      placeholder: 例）mfa-spectrum-viewer
+    validations:
+      required: true
+
+  - type: textarea
+    id: brief
+    attributes:
+      label: 要望（必須・1～3 行でOK）
+      description: 例）「複数都市の MFA・ラクナリティ・パーコレーション結果を比較できるダッシュボードが欲しい」
+      placeholder: |
+        例）「指定した複数 site_id の解析結果を 1 画面で比較できる機能が欲しい」
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "⛳ エージェント向け明示指示"
+      description: "この内容は Issue 本文に含まれます（必要に応じて編集可）。"
+      render: markdown
+      value: |
+        ---
+        ### ⛳ エージェント向け明示指示（OS 専用）
+
+        以下を **Markdown** で生成し、この Issue にコメントとして貼り付け、併せて  
+        `docs/{project_identifier}/requirements.md` として新規作成し PR に含めてください。
+
+        - `{project_identifier}` には上記「プロジェクト名・機能名・設計名」の値をそのまま使ってください。
+
+        - 生成された要件は、OS リポジトリの構造・ルール（config-first / uv / src-scripts-viewers-outputs / Dash viewer）に整合させてください。
+
+        #### 生成するセクション
+
+        1) 背景・目的（1 段落）
+           - 都市構造解析（MFA / Lacunarity / Percolation）と OpenSparsity の文脈に紐づけること
+
+        2) スコープ / 非スコープ（箇条書き）
+           - `src/` 配下で扱うロジック、`scripts/` の CLI、`viewers/` の Dash アプリなどの対象範囲を明確化
+
+        3) ステークホルダー & 主要ユースケース（簡潔）
+           - 研究者 / 自分自身 / 将来の共同研究者など、誰がどう使うか
+
+        4) 機能要件
+           - EARS 形式（Ubiquitous / State-driven / Event-driven）で最大 10 件
+           - 入出力は必ず `configs/*`, `data/*`, `outputs/*` のどれを使うかを明示すること
+
+        5) ユーザーストーリー
+           - INVEST 準拠、各ストーリーに MoSCoW 優先度（Must/Should/Could/Won't）を付与
+
+        6) 受け入れ基準
+           - 各ストーリー 3〜5 件、Gherkin の Given/When/Then 形式
+           - 解析の再現性（同じ config なら同じ outputs が得られること）を含める
+
+        7) 非機能要件
+           - OS の実行環境に合わせ、**数値で定量化** してください。
+             例：1 回の解析ジョブ (MFA+Lacunarity+Percolation) は `N` 分以内、メモリ上限 `M` GB 以内、など。
+             例：Dash viewer の p95 レイテンシ ≦ 500 ms など。
+
+        8) データ & API / 入出力仕様
+           - Overture Maps / DuckDB / NumPy / GraphTool など、関わるコンポーネントを列挙
+           - `scripts/run_*.py` の CLI インタフェース、`configs/default.yaml` に追加されるパラメータ候補を明記
+
+        9) リスク / 依存関係 / 制約
+           - 外部データセット、GPU / CPU リソース、Graph Tool のビルド環境など
+
+        10) Assumptions / Open Questions（仮定と要確認事項）
+            - たとえば「site_id の粒度」「将来的な 3D 拡張」「複数解像度の扱い」など
+
+        11) 成功指標（SMART）と計測方法
+            - 例：指定した `site_id` に対して、解析〜可視化までを 1 コマンドで再実行できる、など。
+
+        #### 追加要件（OS / Iwata Rules 準拠）
+
+        - 曖昧語は禁止（「高速」→ *p95=200 ms以下* のように **必ず数値化**）
+
+        - 「config-first」原則を前提に、必要な設定項目を `configs/` に集約する前提で要件化すること
+
+        - 実装フェーズでは、コードは `src/`, `scripts/`, `viewers/`, `tests/` のみを変更対象とする前提で要件を書いてください
+
+        - PR の説明文は日本語で記載してください（生成物一覧と要件へのトレースを含める）
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: 実行前チェック
+      options:
+        - label: Issue 作成後に **Copilot が自動で担当者に割り当て** られます（確認済み）
+          required: true
+

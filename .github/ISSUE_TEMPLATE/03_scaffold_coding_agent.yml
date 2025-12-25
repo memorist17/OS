@@ -1,0 +1,110 @@
+name: "03 共通基盤・スカフォールド生成 (Copilot Coding Agent / OS)"
+description: "OS リポジトリの共通基盤（devcontainer / CI / pre-commit / compose 等）を Copilot によって自動生成・更新し、PR を作成します"
+title: "[共通基盤] <スコープ名を記入>"
+labels: ["scaffold", "platform", "autogen"]
+assignees: ["copilot"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 使い方
+        1) 下の入力欄に `project_identifier` を指定して Issue を作成
+        2) 作成後、**Copilot が自動で担当者に割り当て** られます
+        3) Copilot が共通基盤一式を生成/更新し、PR を作成します
+
+        - 既存ファイルがある場合は「差分更新（追記/補完）」を原則とし、破壊的変更は避けます
+        - 構成や詳細の説明は `docs/{project_identifier}/scaffold/` にドキュメントとして出力します
+
+  - type: input
+    id: project_identifier
+    attributes:
+      label: プロジェクト識別子（必須・英数字/ハイフン）
+      description: "例: `os-foundation` → `docs/os-foundation/` 配下にドキュメントを生成"
+      placeholder: 例）os-foundation
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "⛳ エージェント向け明示指示"
+      description: "この内容はIssue本文に含まれます（必要に応じて編集可）。"
+      render: markdown
+      value: |
+        ---
+        ### ⛳ エージェント向け明示指示（OS 共通基盤・スカフォールド）
+
+        既に作成済みの要件・設計（存在する場合）を解析し、必要な基盤/設定を**自動判定**したうえで  
+        OS リポジトリの共通基盤を生成/更新し、PR に含めてください。
+
+        #### 入力解析
+
+        - 次のドキュメントが存在する場合は解析して方針を決めてください：
+          - `docs/{project_identifier}/*.md`（要件・運用方針・非機能等）
+          - `docs/{project_identifier}/design/*`（設計一式）
+
+        - 解析結果に基づき、以下の例のようにスカフォールド方針を決定します：
+          - 性能要件・解析頻度 → CI / キャッシュ戦略 / 並列化戦略（job matrix）を決定
+          - 再現性・ロギング要件 → ログ出力形式、`outputs/{run_id}/config_snapshot.yaml` の扱いを整備
+
+        #### 生成対象（OS 向け）
+
+        既存がある場合は **追記/補完** を優先し、破壊的変更は避けてください。
+
+        - Git / エディタ共通:
+          - `.editorconfig`, `.gitattributes`, `.gitignore`（既存あれば拡張）
+        - DevContainer:
+          - `.devcontainer/devcontainer.json`
+            - ベースイメージは既存 `Dockerfile` を再利用するか、それに準じてください
+            - uv / Python / graph-tool などの依存を含む
+        - CI（GitHub Actions）:
+          - `.github/workflows/ci.yml`
+            - Python 3.x / uv を使ったセットアップ
+            - `uv pip install -e .`
+            - `pytest`（または `python -m pytest`）の実行
+            - 必要なら `ruff` / `black` / `mypy` などの Lint/Format（既存に揃える）
+        - Pre-commit / Lint:
+          - `.pre-commit-config.yaml`（存在しない場合）
+          - `pyproject.toml` に lint/format 設定を追加/補完（既存を尊重）
+        - Docker / Compose:
+          - `compose.yaml`
+            - Dash viewer を立ち上げるサービス（例: `os-viewer`）
+            - 必要最小限のサービス（例: web のみ; DB 等は必要になったら別 Issue）
+
+        #### ドキュメント出力
+
+        すべて `docs/{project_identifier}/scaffold/` に出力してください。
+
+        - `README.md`：
+          - 目的、適用範囲（OS リポジトリにおける役割）、採用技術、ディレクトリ構成
+          - devcontainer / CI / Compose のざっくりした使い方
+        - `ci.md`：
+          - CI のステップ、キャッシュの方針、テストの粒度
+        - `devcontainer.md`：
+          - 開発環境の起動手順、利用想定
+        - `compose.md`：
+          - `docker compose up` で Dash viewer まで動かす流れ
+        - `decisions.md`：
+          - 主要な設計判断と理由（ADR 簡易形式）
+
+        #### OS / Iwata Rules 準拠の制約
+
+        - 新規コードは `src/`, `scripts/`, `viewers/`, `tests/` 以外に置かないこと（基盤ツールを除く）
+        - パスやサイト ID などをハードコードしないこと：
+          - 解析条件はすべて `configs/*.yaml` または CLI 引数に外だしされる前提
+        - uv を前提としたコマンド例を README, scaffold docs に記載すること：
+          - 例: `uv venv`, `uv pip install -e .`, `uv run scripts/run_analysis.py ...`
+        - 将来的な並列実験（複数 site_id / 複数 run_id）を邪魔しないように、outputs のパス規約を尊重すること。
+
+        #### 安全性
+
+        - シークレットや API キーは絶対に含めないこと。
+        - 環境変数が必要な場合は `.env.example` のみ生成し、実値はコミットしないこと。
+
+        #### PR 方針
+
+        - 生成/更新されたファイルと、それぞれの目的を PR 説明欄に日本語で記載してください。
+        - 既存の Dockerfile / pyproject.toml に対して破壊的な変更が必要な場合は、コメントで理由と代替案を明記し、最小限に留めてください。
+    validations:
+      required: false

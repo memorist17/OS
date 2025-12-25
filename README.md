@@ -1,10 +1,16 @@
-# Urban Structure Analysis System
+# Structure Analysis System
 
-都市構造解析システム - MFA/Lacunarity/Percolation統合解析
+構造解析システム - MFA/Lacunarity/Percolation統合解析
 
 ## 概要
 
-Overture Mapsから都市データを取得し、多重フラクタル解析（MFA）、ラクナリティ解析、パーコレーション解析を統一的に計算・可視化するシステム。
+Overture Mapsから構造データを取得し、多重フラクタル解析（MFA）、ラクナリティ解析、パーコレーション解析を統一的に計算・可視化するシステム。
+
+## 実行結果（アルファ）
+<div style="max-height: 1000px; overflow-y: scroll; border: 1px solid #444; padding: 8px;">
+  <img src="https://github.com/user-attachments/assets/0fdd2976-609b-459d-8398-a9b618d5079d" width="100%">
+</div>
+
 
 ## 機能
 
@@ -12,7 +18,7 @@ Overture Mapsから都市データを取得し、多重フラクタル解析（M
 - **Overture Maps連携**: DuckDB + httpfsによるS3直接アクセス
 - **動的AEQD投影**: 任意地点を中心とした等距離方位図法
 - **ラスタライズ**: 建物（バイナリ）、道路（重み付き）
-- **ネットワーク構築**: NetworkXによる空間グラフ生成
+- **ネットワーク構築**: graph-toolによる空間グラフ生成
 
 ### Phase 3: Analysis Engine
 - **多重フラクタル解析 (MFA)**: 4D reshape + グリッドシフト平均化
@@ -277,7 +283,7 @@ docker run -it -v $(pwd)/data:/app/data -v $(pwd)/outputs:/app/outputs urban-ana
 - duckdb >= 1.1.0
 - geopandas >= 0.14.0
 - rasterio >= 1.3.0
-- networkx >= 3.0
+- graph-tool >= 2.1.1
 - numpy >= 1.26.0
 - pandas >= 2.1.0
 - dash >= 2.14.0
@@ -288,11 +294,6 @@ docker run -it -v $(pwd)/data:/app/data -v $(pwd)/outputs:/app/outputs urban-ana
 - tqdm >= 4.66.0
 - scikit-learn >= 1.3.0
 - umap-learn >= 0.5.5 (オプション: UMAP次元削減用)
+- ngrok
+- tmux
 
-## ライセンス
-
-MIT License
-
-## 作者
-
-Kotaro Iwata - Iwata Global Research & Engineering
