@@ -7,7 +7,7 @@ from pyproj import CRS, Transformer
 try:
     from shapely import box
 except ImportError:
-    from shapely.geometry import box
+from shapely.geometry import box
 
 
 @dataclass

@@ -72,6 +72,43 @@ analysis:
     dimension_reduction: "none"
     pca_n_components: 3           # int: 成分数, float: 説明分散率
 
+# ===== Phase 4: Visualization =====
+visualization:
+  # 空間的可視化設定
+  spatial:
+    enabled: true              # 空間的可視化を有効化
+    show_buildings: true       # 建物を表示
+    show_roads: true          # 道路を表示
+    show_network: true        # ネットワークを表示
+    heatmap_opacity: 0.7      # ヒートマップの不透明度
+    marker_size_range: [5, 20]  # マーカーサイズの範囲
+  
+  # 指標と画像対応ビュー設定
+  indicator_image_view:
+    enabled: true              # 指標と画像対応ビューを有効化
+    chart_height: 400         # チャートの高さ（px）
+    chart_min_width: 1200     # チャートの最小幅（px）
+    image_size_per_point: 200 # 地点あたりの画像サイズ（px）
+    gallery_columns: "auto"   # ギャラリーの列数（"auto" or 数値）
+    thumbnail_size: 200       # サムネイル画像サイズ（px）
+    highlight_color: "rgba(255, 0, 0, 1.0)"  # ハイライト色
+  
+  # クラスターと画像対応ビュー設定
+  cluster_image_view:
+    enabled: true              # クラスターと画像対応ビューを有効化
+    plot_height: 800          # プロットの高さ（px）
+    point_size: 8             # ポイントサイズ（px）
+    representative_image_size: 50  # 代表画像サイズ（座標単位）
+    point_image_size: 20      # ポイント画像サイズ（座標単位）
+    zoom_threshold: 0.5       # 画像表示に切り替えるズーム閾値
+    max_images_per_zoom: 50   # ズームレベルあたりの最大画像数
+    cluster_colors:           # クラスター色のリスト
+      - "#1f77b4"
+      - "#ff7f0e"
+      - "#2ca02c"
+      - "#d62728"
+      - "#9467bd"
+
 # ===== Execution =====
 execution:
   n_jobs: -1               # joblib並列数 (-1 = 全コア)
