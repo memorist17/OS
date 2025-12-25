@@ -47,7 +47,11 @@ def extract_indicator_data(
     elif indicator_type == "lacunarity":
         if "lacunarity" in results:
             df = results["lacunarity"]
-            return {"r": df["r"].values, "lambda_r": df["lambda"].values}
+            # Check column names (may be "lambda" or "lambda_r")
+            if "lambda_r" in df.columns:
+                return {"r": df["r"].values, "lambda_r": df["lambda_r"].values}
+            elif "lambda" in df.columns:
+                return {"r": df["r"].values, "lambda_r": df["lambda"].values}
         return {"r": [], "lambda_r": []}
     
     elif indicator_type == "percolation":
@@ -144,7 +148,7 @@ def _get_yaxis_label(indicator_type: str, indicator_value: str) -> str:
     elif indicator_type == "lacunarity":
         return "Λ(r)"
     elif indicator_type == "percolation":
-        return "Giant fraction"
+        return "Giant Component Fraction"
     return "Y"
 
 
@@ -177,25 +181,49 @@ def _get_location_images(
         config = results["config"]
         data_dir = Path(config.get("data_dir", ""))
         if data_dir.exists():
-            # Buildings raster
-            buildings_path = data_dir / "buildings_binary.npy"
-            if buildings_path.exists():
-                images["buildings"] = buildings_path
+            # Look for PNG images first (preferred)
+            combined_path = data_dir / "combined_visualization.png"
+            if combined_path.exists():
+                images["combined"] = combined_path
             
-            # Roads raster
-            roads_path = data_dir / "roads_weighted.npy"
-            if roads_path.exists():
-                images["roads"] = roads_path
+            # Buildings visualization
+            buildings_img_path = data_dir / "buildings_visualization.png"
+            if buildings_img_path.exists():
+                images["buildings"] = buildings_img_path
             
-            # Network graph
-            network_path = data_dir / "network.graphml"
-            if network_path.exists():
-                images["network"] = network_path
+            # Roads visualization
+            roads_img_path = data_dir / "roads_raster_comparison.png"
+            if roads_img_path.exists():
+                images["roads"] = roads_img_path
+            
+            # Network visualization (look for PNG files with network in name)
+            for png_file in data_dir.glob("*network*.png"):
+                images["network"] = png_file
+                break
+            
+            # Fallback to raster files if no PNG found
+            if "combined" not in images:
+                buildings_path = data_dir / "buildings_binary.npy"
+                if buildings_path.exists():
+                    images["buildings"] = buildings_path
+                
+                roads_path = data_dir / "roads_weighted.npy"
+                if roads_path.exists():
+                    images["roads"] = roads_path
     
     # Thumbnail image (if exists)
     thumbnail_path = results_dir / "thumbnail.png"
     if thumbnail_path.exists():
         images["thumbnail"] = thumbnail_path
+    
+    # Also check data directory for thumbnail
+    if "config" in results:
+        config = results["config"]
+        data_dir = Path(config.get("data_dir", ""))
+        if data_dir.exists():
+            data_thumbnail = data_dir / "thumbnail.png"
+            if data_thumbnail.exists() and "thumbnail" not in images:
+                images["thumbnail"] = data_thumbnail
     
     return images
 
@@ -220,14 +248,33 @@ def create_horizontal_scrollable_chart(
     if config is None:
         config = {}
     
-    chart_height = config.get("chart_height", 400)
+    # Use viewport height for full screen charts
+    chart_height = config.get("chart_height", "100vh")
     chart_min_width = config.get("chart_min_width", 1200)
     
     fig = go.Figure()
     
+    # Helper function to get point name from results
+    def get_point_name(results: dict[str, Any], idx: int) -> str:
+        """Get display name or site_id from results."""
+        default_name = f"Point {idx}"
+        if "config" in results:
+            config = results["config"]
+            site_metadata = config.get("site_metadata", {})
+            meta_info = site_metadata.get("meta_info", {})
+            # Try display_name first, then site_id (lat_lon format)
+            display_name = meta_info.get("display_name")
+            if display_name:
+                return display_name
+            site_id = meta_info.get("site_id") or site_metadata.get("site_id")
+            if site_id:
+                return site_id
+        return default_name
+    
     # Plot data for each point
     for idx, results in enumerate(all_results):
         data = extract_indicator_data(results, indicator_type, indicator_value)
+        point_name = get_point_name(results, idx)
         
         if indicator_type == "mfa":
             if "x" in data and len(data["x"]) > 0:
@@ -235,7 +282,7 @@ def create_horizontal_scrollable_chart(
                     x=data["x"],
                     y=data["y"],
                     mode="lines+markers",
-                    name=f"Point {idx}",
+                    name=point_name,
                     line=dict(width=2),
                     marker=dict(size=6),
                     customdata=[idx] * len(data["x"]),
@@ -247,7 +294,7 @@ def create_horizontal_scrollable_chart(
                     x=data["r"],
                     y=data["lambda_r"],
                     mode="lines+markers",
-                    name=f"Point {idx}",
+                    name=point_name,
                     line=dict(width=2),
                     marker=dict(size=6),
                     customdata=[idx] * len(data["r"]),
@@ -259,26 +306,54 @@ def create_horizontal_scrollable_chart(
                     x=data["d"],
                     y=data["giant_fraction"],
                     mode="lines+markers",
-                    name=f"Point {idx}",
+                    name=point_name,
                     line=dict(width=2),
                     marker=dict(size=6),
                     customdata=[idx] * len(data["d"]),
                 ))
     
-    # Calculate width based on number of points
-    width = max(chart_min_width, len(all_results) * 200)
+    # Square chart: use chart_height for both width and height
+    if isinstance(chart_height, str) and chart_height.endswith("vh"):
+        # If it's viewport height, use a fixed pixel size for square
+        square_size = config.get("square_chart_size", 400)
+    else:
+        square_size = chart_height
     
+    # Ensure square dimensions
+    width = square_size
+    height = square_size
+    
+    # Minimize margins and show legend while maintaining square
+    # Use autosize to fill container width, but maintain square aspect ratio
     fig.update_layout(
-        title=f"{indicator_type.upper()} Indicator Chart",
+        title="",
         xaxis_title=_get_xaxis_label(indicator_type),
         yaxis_title=_get_yaxis_label(indicator_type, indicator_value),
-        height=chart_height,
-        width=width,
+        height=height,
+        width=None,  # Let it autosize to container width
         hovermode="closest",
         template="plotly_dark",
-        paper_bgcolor="#1a1a2e",
-        plot_bgcolor="#16213e",
-        font=dict(family="Noto Sans JP, sans-serif", color="#eee"),
+        paper_bgcolor="#161b22",
+        plot_bgcolor="#0d1117",
+        font=dict(family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif", color="#c9d1d9", size=9),
+        autosize=True,  # Enable autosize to fill container
+        showlegend=True,  # Show legend
+        legend=dict(
+            x=1.02,  # Position legend to the right
+            y=1,
+            xanchor="left",
+            yanchor="top",
+            font=dict(size=8),
+        ),
+        margin=dict(l=30, r=10, t=10, b=30),  # Minimize margins
+        xaxis=dict(
+            gridcolor="#21262d",
+            linecolor="#30363d",
+        ),
+        yaxis=dict(
+            gridcolor="#21262d",
+            linecolor="#30363d",
+        ),
     )
     
     return fig
@@ -307,15 +382,43 @@ def create_image_gallery(
     for idx, (results, results_dir) in enumerate(zip(all_results, results_dirs)):
         image_paths = _get_location_images(results, results_dir)
         
-        for img_type, img_path in image_paths.items():
-            # For .npy files, we need to convert to image first
-            # For now, skip .npy files and only show .png files
-            if img_path.suffix == ".npy":
-                continue
-            
-            image_base64 = _encode_image(img_path)
-            if not image_base64:
-                continue
+        # Get location name from config
+        location_name = results_dir.name  # Default to run_id
+        if "config" in results:
+            config = results["config"]
+            site_metadata = config.get("site_metadata", {})
+            meta_info = site_metadata.get("meta_info", {})
+            # Try to get display_name or site_id
+            location_name = meta_info.get("display_name") or meta_info.get("site_id") or location_name
+        
+        # Prioritize combined visualization, then thumbnail, then others
+        priority_order = ["combined", "thumbnail", "buildings", "roads", "network"]
+        displayed_images = []
+        
+        for img_type in priority_order:
+            if img_type in image_paths:
+                img_path = image_paths[img_type]
+                # Skip .npy files (raster data)
+                if img_path.suffix == ".npy":
+                    continue
+                
+                image_base64 = _encode_image(img_path)
+                if image_base64:
+                    displayed_images.append((img_type, img_path, image_base64))
+                    break  # Only show one image per location
+        
+        # If no priority image found, try any other image
+        if not displayed_images:
+            for img_type, img_path in image_paths.items():
+                if img_path.suffix == ".npy":
+                    continue
+                
+                image_base64 = _encode_image(img_path)
+                if image_base64:
+                    displayed_images.append((img_type, img_path, image_base64))
+                    break
+        
+        for img_type, img_path, image_base64 in displayed_images:
             
             gallery_items.append(
                 html.Div([
@@ -331,8 +434,8 @@ def create_image_gallery(
                         id={"type": "gallery-image", "index": idx, "img_type": img_type},
                     ),
                     html.P(
-                        f"{results_dir.name} - {img_type}",
-                        style={"text-align": "center", "margin-top": "5px", "color": "#eee"},
+                        location_name,
+                        style={"text-align": "center", "margin-top": "5px", "color": "#c9d1d9", "font-size": "0.9em"},
                     ),
                 ], style={"text-align": "center"}),
             )
